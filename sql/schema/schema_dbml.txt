@@ -1,0 +1,139 @@
+// Use DBML to define your database structure
+// Docs: https://dbml.dbdiagram.io/docs
+
+Table users {
+  id uuid pk 
+  roll_no varchar(255)
+  user_name varchar(255)
+  first_name varchar(255)
+  last_name varchar(255)
+  email varchar(255)
+  passwordHash varchar(255)
+}
+
+Table roles {
+  role_name varchar(50) pk
+}
+
+Table user_roles {
+  user_id uuid pk
+  role_name varchar(50) pk
+}
+
+Ref: user_roles.user_id > users.id
+Ref: user_roles.role_name > roles.role_name
+
+Table problems {
+  id uuid pk
+  title varchar(255)
+  statement text
+  input_format text
+  output_format text
+  samples jsonb
+  notes text
+  memory_limit_kb int
+  time_limit_ms int
+  created_by uuid
+  created_at datetime
+  updated_at datetime
+  difficulty int
+  submission_link uri
+  platform varchar(255)
+}
+
+Ref: problems.created_by > users.id
+
+Table contest {
+  id uuid pk
+  title varchar(255)
+  created_by uuid
+  created_at datetime
+  updated_at datetime
+  start_time datetime
+  end_time datetime
+  is_published boolean
+}
+
+Ref: contest.created_by > users.id
+
+Table contest_problems {
+  contest_id uuid pk
+  problem_id uuid pk
+  score int
+}
+
+Table solved {
+  user_id uuid
+  contest_id uuid
+  problem_id uuid
+}
+
+Table user_scores {
+  user_id uuid
+  contest_id uuid
+  problem_id uuid
+  score int
+  updated_at datetime
+  submission_id uuid
+}
+
+Ref: user_scores.submission_id - submissions.id
+Ref: user_scores.user_id > users.id
+Ref: user_scores.contest_id > contest_problems.contest_id
+Ref: user_scores.problem_id > contest_problems.problem_id
+Ref: solved.user_id > users.id
+Ref: solved.contest_id > contest_problems.contest_id
+Ref: solved.problem_id > contest_problems.problem_id
+Ref: contest_problems.contest_id > contest.id
+Ref: contest_problems.problem_id > problems.id
+
+Table bots {
+  id uuid pk
+  account_name varchar(255)
+  platform varchar(255)
+  website_data jsonb
+}
+
+Table submissions{
+  id uuid pk
+  bot_account_id uuid
+  website_data jsonb
+  submitted_by uuid
+  contest_id uuid [null]
+  problem_id uuid
+  language varchar(50)
+  solution text
+  status text
+}
+
+Ref: submissions.submitted_by > users.id
+Ref: submissions.contest_id > contest.id
+Ref: submissions.problem_id > problems.id
+Ref: submissions.bot_account_id > bots.id
+
+Table tournaments {
+  id uuid pk
+  title varchar(255) unique
+  rounds int
+  created_by uuid
+  updated_by uuid
+  start_time datetime
+}
+
+Table tournament_contests {
+  contest_id uuid pk
+  tournament_id uuid pk
+  round int
+}
+
+Ref: tournament_contests.contest_id > contest.id
+Ref: tournament_contests.tournament_id > tournaments.id
+
+Table contest_registered_users {
+  user_id uuid
+  contest_id uuid
+}
+
+Ref: contest_registered_users.user_id > users.id
+Ref: contest_registered_users.contest_id > contest.id
+

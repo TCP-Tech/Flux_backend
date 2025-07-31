@@ -1,0 +1,13 @@
+version: "2"
+
+sql:
+  - schema: "sql/schema"
+    queries: "sql/queries"
+    engine: "postgresql"
+    gen:
+      go:
+        out: "internal/database"
+        emit_json_tags: true
+        overrides:
+          - db_type: "platform_type"
+            go_type: "string"
