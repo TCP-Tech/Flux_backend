@@ -13,7 +13,7 @@ CREATE TABLE problems (
     statement TEXT NOT NULL,
     input_format TEXT NOT NULL,
     output_format TEXT NOT NULL,
-    eample_testcases JSONB,
+    example_testcases JSONB,
     notes TEXT,
     memory_limit_kb INTEGER NOT NULL,
     time_limit_ms INTEGER NOT NULL,

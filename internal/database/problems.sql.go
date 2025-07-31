@@ -20,11 +20,12 @@ INSERT INTO problems (
     statement,
     input_format,
     output_format,
-    eample_testcases,
+    example_testcases,
     notes,
     memory_limit_kb,
     time_limit_ms,
     created_by,
+    last_updated_by,
     difficulty,
     submission_link,
     platform
@@ -38,6 +39,7 @@ INSERT INTO problems (
     $7, -- memory_limit_kb
     $8, -- time_limit_ms
     $9, -- created_by (UUID)
+    $9, -- last_updated_by (UUID)
     $10, -- difficulty (can be NULL)
     $11, -- submission_link (can be NULL)
     $12  -- platform (can be NULL)
@@ -46,18 +48,18 @@ RETURNING id, created_at, updated_at
 `
 
 type AddProblemParams struct {
-	Title           string                `json:"title"`
-	Statement       string                `json:"statement"`
-	InputFormat     string                `json:"input_format"`
-	OutputFormat    string                `json:"output_format"`
-	EampleTestcases pqtype.NullRawMessage `json:"eample_testcases"`
-	Notes           sql.NullString        `json:"notes"`
-	MemoryLimitKb   int32                 `json:"memory_limit_kb"`
-	TimeLimitMs     int32                 `json:"time_limit_ms"`
-	CreatedBy       uuid.UUID             `json:"created_by"`
-	Difficulty      int32                 `json:"difficulty"`
-	SubmissionLink  sql.NullString        `json:"submission_link"`
-	Platform        NullPlatformType      `json:"platform"`
+	Title            string                `json:"title"`
+	Statement        string                `json:"statement"`
+	InputFormat      string                `json:"input_format"`
+	OutputFormat     string                `json:"output_format"`
+	ExampleTestcases pqtype.NullRawMessage `json:"example_testcases"`
+	Notes            sql.NullString        `json:"notes"`
+	MemoryLimitKb    int32                 `json:"memory_limit_kb"`
+	TimeLimitMs      int32                 `json:"time_limit_ms"`
+	CreatedBy        uuid.UUID             `json:"created_by"`
+	Difficulty       int32                 `json:"difficulty"`
+	SubmissionLink   sql.NullString        `json:"submission_link"`
+	Platform         NullPlatformType      `json:"platform"`
 }
 
 type AddProblemRow struct {
@@ -72,7 +74,7 @@ func (q *Queries) AddProblem(ctx context.Context, arg AddProblemParams) (AddProb
 		arg.Statement,
 		arg.InputFormat,
 		arg.OutputFormat,
-		arg.EampleTestcases,
+		arg.ExampleTestcases,
 		arg.Notes,
 		arg.MemoryLimitKb,
 		arg.TimeLimitMs,
@@ -98,7 +100,7 @@ func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 string) (strin
 }
 
 const getProblemById = `-- name: GetProblemById :one
-SELECT id, title, statement, input_format, output_format, eample_testcases, notes, memory_limit_kb, time_limit_ms, created_by, created_at, updated_at, difficulty, submission_link, platform FROM problems WHERE id = $1
+SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform FROM problems WHERE id = $1
 `
 
 func (q *Queries) GetProblemById(ctx context.Context, id int32) (Problem, error) {
@@ -110,11 +112,86 @@ func (q *Queries) GetProblemById(ctx context.Context, id int32) (Problem, error)
 		&i.Statement,
 		&i.InputFormat,
 		&i.OutputFormat,
-		&i.EampleTestcases,
+		&i.ExampleTestcases,
 		&i.Notes,
 		&i.MemoryLimitKb,
 		&i.TimeLimitMs,
 		&i.CreatedBy,
+		&i.LastUpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Difficulty,
+		&i.SubmissionLink,
+		&i.Platform,
+	)
+	return i, err
+}
+
+const updateProblem = `-- name: UpdateProblem :one
+UPDATE problems
+SET
+    title = $1,
+    statement = $2,
+    input_format = $3,
+    output_format = $4,
+    example_testcases = $5,
+    notes = $6,
+    memory_limit_kb = $7,
+    time_limit_ms = $8,
+    difficulty = $9,
+    submission_link = $10,
+    platform = $11,
+    last_updated_by = $12
+WHERE
+    id = $13
+RETURNING id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform
+`
+
+type UpdateProblemParams struct {
+	Title            string                `json:"title"`
+	Statement        string                `json:"statement"`
+	InputFormat      string                `json:"input_format"`
+	OutputFormat     string                `json:"output_format"`
+	ExampleTestcases pqtype.NullRawMessage `json:"example_testcases"`
+	Notes            sql.NullString        `json:"notes"`
+	MemoryLimitKb    int32                 `json:"memory_limit_kb"`
+	TimeLimitMs      int32                 `json:"time_limit_ms"`
+	Difficulty       int32                 `json:"difficulty"`
+	SubmissionLink   sql.NullString        `json:"submission_link"`
+	Platform         NullPlatformType      `json:"platform"`
+	LastUpdatedBy    uuid.UUID             `json:"last_updated_by"`
+	ID               int32                 `json:"id"`
+}
+
+func (q *Queries) UpdateProblem(ctx context.Context, arg UpdateProblemParams) (Problem, error) {
+	row := q.db.QueryRowContext(ctx, updateProblem,
+		arg.Title,
+		arg.Statement,
+		arg.InputFormat,
+		arg.OutputFormat,
+		arg.ExampleTestcases,
+		arg.Notes,
+		arg.MemoryLimitKb,
+		arg.TimeLimitMs,
+		arg.Difficulty,
+		arg.SubmissionLink,
+		arg.Platform,
+		arg.LastUpdatedBy,
+		arg.ID,
+	)
+	var i Problem
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Statement,
+		&i.InputFormat,
+		&i.OutputFormat,
+		&i.ExampleTestcases,
+		&i.Notes,
+		&i.MemoryLimitKb,
+		&i.TimeLimitMs,
+		&i.CreatedBy,
+		&i.LastUpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Difficulty,

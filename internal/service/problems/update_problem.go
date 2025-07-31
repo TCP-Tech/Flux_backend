@@ -2,32 +2,21 @@ package problem_service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
-	auth_service "github.com/tcp_snm/flux/internal/service/auth"
-	"github.com/tcp_snm/flux/middleware"
 )
 
-func (p *ProblemService) UpdateProblem(ctx context.Context, id int32, problem Problem) (err error) {
+func (p *ProblemService) UpdateProblem(
+	ctx context.Context,
+	problem Problem,
+) (problemResponse Problem, err error) {
 	// get the user details from claims
-	claimsValue := ctx.Value(middleware.KeyCtxUserCredClaims)
-	claims, ok := claimsValue.(auth_service.UserCredentialClaims)
-	if !ok {
-		err = fmt.Errorf(
-			"%w, unable to parse claims to auth_service.UserCredentialClaims, type of claims found is %T",
-			flux_errors.ErrInternal,
-			reflect.TypeOf(claims),
-		)
-		return
-	}
-
-	// fetch user from db
-	user, err := p.UserConfig.FetchUserFromDb(ctx, claims.UserName, claims.RollNo)
+	user, err := p.UserConfig.FetchUserFromClaims(ctx)
 	if err != nil {
 		return
 	}
@@ -44,18 +33,6 @@ func (p *ProblemService) UpdateProblem(ctx context.Context, id int32, problem Pr
 		}
 		return
 	}
-	
-	// Fetch the existing problem to check for ownership
-	_, err = p.DB.GetProblemById(ctx, id)
-	if err != nil {
-		if errors.Is(err, flux_errors.ErrNotFound) {
-			return fmt.Errorf("%w, problem with id %d not found", flux_errors.ErrNotFound, id)
-		}
-		log.Error(fmt.Errorf("%w, unable to fetch problem with id %d", err, id))
-		return fmt.Errorf("%w, unable to fetch problem with id %d", flux_errors.ErrInternal, id)
-	}
-
-	// --- End New Logic ---
 
 	// validate the problem data
 	err = p.validateProblem(ctx, problem)
@@ -63,15 +40,20 @@ func (p *ProblemService) UpdateProblem(ctx context.Context, id int32, problem Pr
 		return
 	}
 
-	// get UpdateProblemParams (assuming a helper method exists for this)
-	params, err := getUpdateProblemParams(id, problem)
+	// get UpdateProblemParams
+	params, err := getUpdateProblemParams(user.ID, problem.ID, problem)
 	if err != nil {
 		return
 	}
 
 	// update the problem in the database
-	_, err = p.DB.UpdateProblem(ctx, params)
+	dbProblem, err := p.DB.UpdateProblem(ctx, params)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = fmt.Errorf("%w, problem with id %d do not exist", flux_errors.ErrNotFound, problem.ID)
+			log.Error(err)
+			return
+		}
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) {
 			if pqErr.Code == flux_errors.CodeUniqueConstraintViolation {
@@ -82,11 +64,17 @@ func (p *ProblemService) UpdateProblem(ctx context.Context, id int32, problem Pr
 				return
 			}
 		}
-		log.Errorf("unable to update problem with id %d: %v", id, err)
-		err = fmt.Errorf("%w, unable to update problem with id %d: %w", flux_errors.ErrInternal, id, err)
+		log.Errorf("unable to update problem with id %d: %v", problem.ID, err)
+		err = fmt.Errorf(
+			"%w, unable to update problem with id %d: %w",
+			flux_errors.ErrInternal,
+			problem.ID, err,
+		)
 		return
 	}
+	log.Infof("problem with id %d updated successfully by user %v", problem.ID, user.UserName)
 
-	log.Infof("problem with id %d updated successfully", id)
-	return nil
+	// prepare the response
+	problemResponse, err = dbProblemToServiceProblem(dbProblem)
+	return
 }

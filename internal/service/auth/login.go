@@ -10,6 +10,7 @@ import (
 	jwt "github.com/golang-jwt/jwt/v4"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -63,7 +64,7 @@ func (a *AuthService) Login(
 	return
 }
 
-func GenerateJWT(claims UserCredentialClaims) (tokenString string, err error) {
+func GenerateJWT(claims service.UserCredentialClaims) (tokenString string, err error) {
 	// generate a token with a signing method and claims
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 

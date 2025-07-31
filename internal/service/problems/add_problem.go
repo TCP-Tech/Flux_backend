@@ -4,30 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
-	auth_service "github.com/tcp_snm/flux/internal/service/auth"
-	"github.com/tcp_snm/flux/middleware"
 )
 
 func (p *ProblemService) AddProblem(ctx context.Context, problem Problem) (id int32, err error) {
 	// get the user details from claims
-	claimsValue := ctx.Value(middleware.KeyCtxUserCredClaims)
-	claims, ok := claimsValue.(auth_service.UserCredentialClaims)
-	if !ok {
-		err = fmt.Errorf(
-			"%w, unable to parse claims to auth_service.UserCredentialClaims, type of claims found is %T",
-			flux_errors.ErrInternal,
-			reflect.TypeOf(claims),
-		)
-		return
-	}
-
-	// fetch user from db
-	user, err := p.UserConfig.FetchUserFromDb(ctx, claims.UserName, claims.RollNo)
+	user, err := p.UserConfig.FetchUserFromClaims(ctx)
 	if err != nil {
 		return
 	}
@@ -63,7 +48,7 @@ func (p *ProblemService) AddProblem(ctx context.Context, problem Problem) (id in
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) {
 			if pqErr.Code == flux_errors.CodeUniqueConstraintViolation {
-				err = fmt.Errorf("%w, %s, problem with that key already exist", flux_errors.ErrInvalidInput, pqErr.Detail)
+				err = fmt.Errorf("%w, %s problem with that key already exist", flux_errors.ErrInvalidInput, pqErr.Detail)
 				return
 			}
 		}
@@ -73,6 +58,6 @@ func (p *ProblemService) AddProblem(ctx context.Context, problem Problem) (id in
 	}
 
 	id = dbProblem.ID
-	log.Infof("problem with id %d added successfully", id)
+	log.Infof("problem with id %d added successfully by user %v", id, user.UserName)
 	return
 }

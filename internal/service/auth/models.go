@@ -3,7 +3,6 @@ package auth_service
 import (
 	"time"
 
-	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/tcp_snm/flux/internal/database"
 	flux_user "github.com/tcp_snm/flux/internal/service/user"
 )
@@ -36,8 +35,3 @@ type UserLoginResponse struct {
 	JwtTokenExpiry time.Time
 }
 
-type UserCredentialClaims struct {
-	UserName string `json:"user_name"`
-	RollNo   string `json:"roll_no"`
-	jwt.RegisteredClaims
-}

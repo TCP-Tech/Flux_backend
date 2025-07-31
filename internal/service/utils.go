@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	crand "crypto/rand"
 	"errors"
 	"fmt"
@@ -10,10 +9,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	log "github.com/sirupsen/logrus"
-	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
-	auth_service "github.com/tcp_snm/flux/internal/service/auth"
-	"github.com/tcp_snm/flux/middleware"
 )
 
 func GenerateSecureRandomInt(min, max int) (int, error) {
@@ -81,22 +77,4 @@ func ValidateInput(inp any) error {
 	}
 	// All good, input is valid
 	return nil
-}
-
-func FetchUserFromClaims(ctx context.Context) (user database.User, err error) {
-	claimsValue := ctx.Value(middleware.KeyCtxUserCredClaims)
-	claims, ok := claimsValue.(auth_service.UserCredentialClaims)
-	if !ok {
-		err = fmt.Errorf(
-			"%w, unable to parse claims to auth_service.UserCredentialClaims, type of claims found is %T",
-			flux_errors.ErrInternal,
-			reflect.TypeOf(claims),
-		)
-		return
-	}
-	// fetch user from db
-	user, err = p.UserConfig.FetchUserFromDb(ctx, claims.UserName, claims.RollNo)
-	if err != nil {
-		return
-	}
 }

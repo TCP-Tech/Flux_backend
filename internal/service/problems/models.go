@@ -1,6 +1,9 @@
 package problem_service
 
 import (
+	"database/sql"
+
+	"github.com/sqlc-dev/pqtype"
 	"github.com/tcp_snm/flux/internal/database"
 	flux_user "github.com/tcp_snm/flux/internal/service/user"
 )
@@ -21,7 +24,7 @@ type ExampleTestCases struct {
 }
 
 type Problem struct {
-	ID             string            `json:"problem_id"`
+	ID             int32             `json:"id"`
 	Title          string            `json:"title" validate:"required,max=25"`
 	Statement      string            `json:"statement" validate:"required"`
 	InputFormat    string            `json:"input_format" validate:"required"`
@@ -33,4 +36,11 @@ type Problem struct {
 	Difficulty     int32             `json:"difficulty" validate:"required,numeric,min=800,max=3000"`
 	SubmissionLink *string           `json:"submission_link" valdidate:"url"`
 	Platform       *string           `json:"platform"`
+}
+
+type DBProblemData struct {
+	exampleTestCases pqtype.NullRawMessage
+	notes            sql.NullString
+	submissionLink   sql.NullString
+	platform         database.NullPlatformType
 }

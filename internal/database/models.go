@@ -88,21 +88,22 @@ type ContestRegisteredUser struct {
 }
 
 type Problem struct {
-	ID              int32                 `json:"id"`
-	Title           string                `json:"title"`
-	Statement       string                `json:"statement"`
-	InputFormat     string                `json:"input_format"`
-	OutputFormat    string                `json:"output_format"`
-	EampleTestcases pqtype.NullRawMessage `json:"eample_testcases"`
-	Notes           sql.NullString        `json:"notes"`
-	MemoryLimitKb   int32                 `json:"memory_limit_kb"`
-	TimeLimitMs     int32                 `json:"time_limit_ms"`
-	CreatedBy       uuid.UUID             `json:"created_by"`
-	CreatedAt       time.Time             `json:"created_at"`
-	UpdatedAt       time.Time             `json:"updated_at"`
-	Difficulty      int32                 `json:"difficulty"`
-	SubmissionLink  sql.NullString        `json:"submission_link"`
-	Platform        NullPlatformType      `json:"platform"`
+	ID               int32                 `json:"id"`
+	Title            string                `json:"title"`
+	Statement        string                `json:"statement"`
+	InputFormat      string                `json:"input_format"`
+	OutputFormat     string                `json:"output_format"`
+	ExampleTestcases pqtype.NullRawMessage `json:"example_testcases"`
+	Notes            sql.NullString        `json:"notes"`
+	MemoryLimitKb    int32                 `json:"memory_limit_kb"`
+	TimeLimitMs      int32                 `json:"time_limit_ms"`
+	CreatedBy        uuid.UUID             `json:"created_by"`
+	LastUpdatedBy    uuid.UUID             `json:"last_updated_by"`
+	CreatedAt        time.Time             `json:"created_at"`
+	UpdatedAt        time.Time             `json:"updated_at"`
+	Difficulty       int32                 `json:"difficulty"`
+	SubmissionLink   sql.NullString        `json:"submission_link"`
+	Platform         NullPlatformType      `json:"platform"`
 }
 
 type Role struct {

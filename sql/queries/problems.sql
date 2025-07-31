@@ -4,11 +4,12 @@ INSERT INTO problems (
     statement,
     input_format,
     output_format,
-    eample_testcases,
+    example_testcases,
     notes,
     memory_limit_kb,
     time_limit_ms,
     created_by,
+    last_updated_by,
     difficulty,
     submission_link,
     platform
@@ -22,6 +23,7 @@ INSERT INTO problems (
     $7, -- memory_limit_kb
     $8, -- time_limit_ms
     $9, -- created_by (UUID)
+    $9, -- last_updated_by (UUID)
     $10, -- difficulty (can be NULL)
     $11, -- submission_link (can be NULL)
     $12  -- platform (can be NULL)
@@ -41,7 +43,7 @@ SET
     statement = $2,
     input_format = $3,
     output_format = $4,
-    samples = $5,
+    example_testcases = $5,
     notes = $6,
     memory_limit_kb = $7,
     time_limit_ms = $8,
@@ -51,4 +53,4 @@ SET
     last_updated_by = $12
 WHERE
     id = $13
-RETURNING id, updated_at;
+RETURNING *;

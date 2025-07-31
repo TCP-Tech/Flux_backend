@@ -39,6 +39,8 @@ func handlerError(err error, w http.ResponseWriter) {
 			fallthrough
 		case errors.Is(err, flux_errors.ErrInvalidInput):
 			statusCode = http.StatusBadRequest
+		case errors.Is(err, flux_errors.ErrNotFound):
+			statusCode = http.StatusNotFound
 		case errors.Is(err, flux_errors.ErrUserAlreadyExists):
 			statusCode = http.StatusConflict
 		case errors.Is(err, flux_errors.ErrCorruptedVerification):

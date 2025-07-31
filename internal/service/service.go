@@ -9,15 +9,18 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type contextKey string
+
 const (
-	MinUsernameLength = 5
-	MinPasswordLength = 10
-	MaxPasswordLength = 74
-	KeyJWTSecret      = "JWT_SECRET"
-	KeyUserName       = "user_name"
-	KeyRollNo         = "roll_no"
-	KeyExp            = "exp"
-	KeyIAt            = "iat"
+	MinUsernameLength               = 5
+	MinPasswordLength               = 10
+	MaxPasswordLength               = 74
+	KeyJWTSecret                    = "JWT_SECRET"
+	KeyUserName                     = "user_name"
+	KeyRollNo                       = "roll_no"
+	KeyExp                          = "exp"
+	KeyIAt                          = "iat"
+	KeyCtxUserCredClaims contextKey = "UserCredClaims"
 )
 
 var (

@@ -8,7 +8,6 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/service"
-	auth_service "github.com/tcp_snm/flux/internal/service/auth"
 )
 
 /*
@@ -47,7 +46,7 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// parse the token
-		claims := auth_service.UserCredentialClaims{}
+		claims := service.UserCredentialClaims{}
 		token, err := jwt.ParseWithClaims(tokenString, &claims, func(t *jwt.Token) (any, error) {
 			// Check the signing method to prevent algorithm confusion
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -75,7 +74,7 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}).Infof("accessing %v endpoint under %v method", r.URL.Path, r.Method)
 
 		// pass the claims with context
-		ctx := context.WithValue(r.Context(), KeyCtxUserCredClaims, claims)
+		ctx := context.WithValue(r.Context(), service.KeyCtxUserCredClaims, claims)
 
 		// call the endpoint's handler that the user wants to access
 		next.ServeHTTP(w, r.WithContext(ctx))

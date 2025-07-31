@@ -10,14 +10,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
 	"golang.org/x/crypto/bcrypt"
 )
 
 func dbUserToUserCredClaims(
 	expirationTime time.Time,
 	user database.User,
-) UserCredentialClaims {
-	return UserCredentialClaims{
+) service.UserCredentialClaims {
+	return service.UserCredentialClaims{
 		UserName: user.UserName,
 		RollNo:   user.RollNo,
 		RegisteredClaims: jwt.RegisteredClaims{
