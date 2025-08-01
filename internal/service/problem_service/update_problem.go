@@ -16,20 +16,16 @@ func (p *ProblemService) UpdateProblem(
 	problem Problem,
 ) (problemResponse Problem, err error) {
 	// get the user details from claims
-	user, err := p.UserConfig.FetchUserFromClaims(ctx)
+	user, err := p.UserServiceConfig.FetchUserFromClaims(ctx)
 	if err != nil {
 		return
 	}
 
-	// authorize manager access
-	err = p.UserConfig.AuthorizeManager(ctx, user.ID)
+	// check if they are allowed to update it
+	err = p.authorizeProblemUpdateAccess(ctx, problem.ID, user.ID)
 	if err != nil {
 		if errors.Is(err, flux_errors.ErrUnAuthorized) {
-			log.Errorf(
-				"%v, user %s tried for manager access to update a problem",
-				flux_errors.ErrUnAuthorized,
-				user.UserName,
-			)
+			log.Warnf("user %s tried to update the problem with id %v", user.UserName, problem.ID)
 		}
 		return
 	}
@@ -50,7 +46,7 @@ func (p *ProblemService) UpdateProblem(
 	dbProblem, err := p.DB.UpdateProblem(ctx, params)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, problem with id %d do not exist", flux_errors.ErrNotFound, problem.ID)
+			err = fmt.Errorf("%w, problem with id %v do not exist", flux_errors.ErrNotFound, problem.ID)
 			log.Error(err)
 			return
 		}

@@ -71,7 +71,7 @@ func (p *ProblemService) ListProblemsWithPagination(
 	// filter for created_by or last_updated_by
 	var authorId uuid.NullUUID
 	if userName != "" || rollNo != "" {
-		user, err := p.UserConfig.FetchUserFromDb(ctx, userName, rollNo)
+		user, err := p.UserServiceConfig.FetchUserFromDb(ctx, userName, rollNo)
 		if err != nil {
 			return nil, err
 		}

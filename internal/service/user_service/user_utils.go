@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -85,15 +86,17 @@ func (u *UserService) FetchUserRoles(ctx context.Context, userId uuid.UUID) ([]s
 	return roles, nil
 }
 
-func (u *UserService) AuthorizeManager(ctx context.Context, userId uuid.UUID) error {
+func (u *UserService) AuthorizeUserRole(
+	ctx context.Context,
+	userId uuid.UUID,
+	role UserRole,
+) error {
 	roles, err := u.FetchUserRoles(ctx, userId)
 	if err != nil {
 		return err
 	}
-	for _, role := range roles {
-		if role == "role_manager" {
-			return nil
-		}
+	if slices.Contains(roles, string(role)) {
+		return nil
 	}
 	return flux_errors.ErrUnAuthorized
 }

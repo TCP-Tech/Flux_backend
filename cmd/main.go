@@ -61,8 +61,8 @@ func initAuthService(db *database.Queries, us *user_service.UserService) *auth_s
 func initProblemService(db *database.Queries, us *user_service.UserService) *problem_service.ProblemService {
 	log.Info("initializing problem service")
 	return &problem_service.ProblemService{
-		DB:         db,
-		UserConfig: us,
+		DB:                db,
+		UserServiceConfig: us,
 	}
 }
 

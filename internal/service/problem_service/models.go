@@ -11,7 +11,7 @@ import (
 
 type ProblemService struct {
 	DB         *database.Queries
-	UserConfig *user_service.UserService
+	UserServiceConfig *user_service.UserService
 }
 
 type ExampleTestCase struct {

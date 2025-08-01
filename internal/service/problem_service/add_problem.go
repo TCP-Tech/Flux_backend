@@ -8,17 +8,18 @@ import (
 	"github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func (p *ProblemService) AddProblem(ctx context.Context, problem Problem) (id int32, err error) {
 	// get the user details from claims
-	user, err := p.UserConfig.FetchUserFromClaims(ctx)
+	user, err := p.UserServiceConfig.FetchUserFromClaims(ctx)
 	if err != nil {
 		return
 	}
 
 	// authorize
-	err = p.UserConfig.AuthorizeManager(ctx, user.ID)
+	err = p.UserServiceConfig.AuthorizeUserRole(ctx, user.ID, user_service.RoleManager)
 	if err != nil {
 		if errors.Is(err, flux_errors.ErrUnAuthorized) {
 			log.Errorf(
