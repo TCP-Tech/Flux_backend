@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	log "github.com/sirupsen/logrus"
-	auth_service "github.com/tcp_snm/flux/internal/service/auth"
+	"github.com/tcp_snm/flux/internal/service/auth_service"
 )
 
 func (a *Api) HandlerSignUp(w http.ResponseWriter, r *http.Request) {

@@ -17,5 +17,6 @@ func NewV1Router() *chi.Mux {
 	v1.Post("/auth/reset-password", apiConfig.HandlerResetPassword)
 	v1.Post("/problems", middleware.JWTMiddleware(apiConfig.HandlerAddProblem))
 	v1.Put("/problems", middleware.JWTMiddleware(apiConfig.HandlerUpdateProblem))
+	v1.Get("/problems", middleware.JWTMiddleware(apiConfig.HandlerGetProblems))
 	return v1
 }

@@ -54,3 +54,15 @@ SET
 WHERE
     id = $13
 RETURNING *;
+
+-- name: ListProblemsWithPagination :many
+SELECT * FROM problems
+WHERE
+    title ILIKE $1 AND
+    (
+        sqlc.narg(author_id)::uuid IS NULL OR
+        created_by = sqlc.narg(author_id)::uuid OR
+        last_updated_by = sqlc.narg(author_id)::uuid
+    )
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;

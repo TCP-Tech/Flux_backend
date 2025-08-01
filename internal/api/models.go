@@ -1,8 +1,8 @@
 package api
 
 import (
-	auth_service "github.com/tcp_snm/flux/internal/service/auth"
-	problem_service "github.com/tcp_snm/flux/internal/service/problems"
+	"github.com/tcp_snm/flux/internal/service/auth_service"
+	"github.com/tcp_snm/flux/internal/service/problem_service"
 )
 
 type Api struct {

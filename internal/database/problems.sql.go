@@ -127,6 +127,71 @@ func (q *Queries) GetProblemById(ctx context.Context, id int32) (Problem, error)
 	return i, err
 }
 
+const listProblemsWithPagination = `-- name: ListProblemsWithPagination :many
+SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform FROM problems
+WHERE
+    title ILIKE $1 AND
+    (
+        $4::uuid IS NULL OR
+        created_by = $4::uuid OR
+        last_updated_by = $4::uuid
+    )
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListProblemsWithPaginationParams struct {
+	Title    string        `json:"title"`
+	Limit    int32         `json:"limit"`
+	Offset   int32         `json:"offset"`
+	AuthorID uuid.NullUUID `json:"author_id"`
+}
+
+func (q *Queries) ListProblemsWithPagination(ctx context.Context, arg ListProblemsWithPaginationParams) ([]Problem, error) {
+	rows, err := q.db.QueryContext(ctx, listProblemsWithPagination,
+		arg.Title,
+		arg.Limit,
+		arg.Offset,
+		arg.AuthorID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Problem
+	for rows.Next() {
+		var i Problem
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Statement,
+			&i.InputFormat,
+			&i.OutputFormat,
+			&i.ExampleTestcases,
+			&i.Notes,
+			&i.MemoryLimitKb,
+			&i.TimeLimitMs,
+			&i.CreatedBy,
+			&i.LastUpdatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Difficulty,
+			&i.SubmissionLink,
+			&i.Platform,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateProblem = `-- name: UpdateProblem :one
 UPDATE problems
 SET

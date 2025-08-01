@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	log "github.com/sirupsen/logrus"
-	problem_service "github.com/tcp_snm/flux/internal/service/problems"
+	"github.com/tcp_snm/flux/internal/service/problem_service"
 )
 
 func (a *Api) HandlerAddProblem(w http.ResponseWriter, r *http.Request) {

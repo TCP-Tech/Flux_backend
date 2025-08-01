@@ -19,4 +19,5 @@ var (
 	ErrCorruptedVerification     = errors.New("corrupted verificaiton")
 	ErrUnAuthorized              = errors.New("user not allowed to perform this action")
 	ErrNotFound                  = errors.New("entity not found")
+	ErrPartialResult             = errors.New("unable to fetch complete list of requested entities")
 )

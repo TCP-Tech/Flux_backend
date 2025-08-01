@@ -28,7 +28,7 @@ func (a *Api) HandlerLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate the user and gen a jwt token
-	userLoginResponse, jwtToken, err := a.AuthServiceConfig.Login(
+	userLoginResponse, jwtToken, tokenExpiry, err := a.AuthServiceConfig.Login(
 		r.Context(),
 		param.UserName,
 		param.RollNo,
@@ -51,7 +51,7 @@ func (a *Api) HandlerLogin(w http.ResponseWriter, r *http.Request) {
 	cookie := &http.Cookie{
 		Name:     middleware.KeyJwtSessionCookieName,
 		Value:    jwtToken,
-		Expires:  userLoginResponse.JwtTokenExpiry,
+		Expires:  tokenExpiry,
 		Path:     "/",                  // Important: Makes the cookie available across the entire site
 		HttpOnly: true,                 // Crucial: Prevents JavaScript access
 		Secure:   true,                 // Crucial: Only send over HTTPS

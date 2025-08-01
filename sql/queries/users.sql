@@ -14,3 +14,6 @@ SELECT COUNT(*) FROM users WHERE user_name = $1;
 
 -- name: ResetPassword :exec
 UPDATE users SET password_hash = $2 WHERE user_name = $1;
+
+-- name: GetUserById :one
+SELECT * FROM users WHERE id = $1;

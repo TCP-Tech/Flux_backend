@@ -10,9 +10,9 @@ import (
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/email"
 	"github.com/tcp_snm/flux/internal/service"
-	auth_service "github.com/tcp_snm/flux/internal/service/auth"
-	problem_service "github.com/tcp_snm/flux/internal/service/problems"
-	flux_user "github.com/tcp_snm/flux/internal/service/user"
+	"github.com/tcp_snm/flux/internal/service/auth_service"
+	"github.com/tcp_snm/flux/internal/service/problem_service"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -43,14 +43,14 @@ func initDatabase() *database.Queries {
 	return database.New(conn)
 }
 
-func initUserService(db *database.Queries) *flux_user.UserService {
+func initUserService(db *database.Queries) *user_service.UserService {
 	log.Info("initializing user service")
-	return &flux_user.UserService{
+	return &user_service.UserService{
 		DB: db,
 	}
 }
 
-func initAuthService(db *database.Queries, us *flux_user.UserService) *auth_service.AuthService {
+func initAuthService(db *database.Queries, us *user_service.UserService) *auth_service.AuthService {
 	log.Info("initializing auth service")
 	return &auth_service.AuthService{
 		DB:         db,
@@ -58,7 +58,7 @@ func initAuthService(db *database.Queries, us *flux_user.UserService) *auth_serv
 	}
 }
 
-func initProblemService(db *database.Queries, us *flux_user.UserService) *problem_service.ProblemService {
+func initProblemService(db *database.Queries, us *user_service.UserService) *problem_service.ProblemService {
 	log.Info("initializing problem service")
 	return &problem_service.ProblemService{
 		DB:         db,
