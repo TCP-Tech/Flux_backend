@@ -99,8 +99,20 @@ func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 string) (strin
 	return column_1, err
 }
 
+const createLock = `-- name: CreateLock :one
+INSERT INTO locks (timeout) VALUES ($1)
+RETURNING id, timeout, access
+`
+
+func (q *Queries) CreateLock(ctx context.Context, timeout time.Time) (Lock, error) {
+	row := q.db.QueryRowContext(ctx, createLock, timeout)
+	var i Lock
+	err := row.Scan(&i.ID, &i.Timeout, &i.Access)
+	return i, err
+}
+
 const getProblemById = `-- name: GetProblemById :one
-SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform FROM problems WHERE id = $1
+SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id FROM problems WHERE id = $1
 `
 
 func (q *Queries) GetProblemById(ctx context.Context, id int32) (Problem, error) {
@@ -123,12 +135,13 @@ func (q *Queries) GetProblemById(ctx context.Context, id int32) (Problem, error)
 		&i.Difficulty,
 		&i.SubmissionLink,
 		&i.Platform,
+		&i.LockID,
 	)
 	return i, err
 }
 
 const listProblemsWithPagination = `-- name: ListProblemsWithPagination :many
-SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform FROM problems
+SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id FROM problems
 WHERE
     title ILIKE $1 AND
     (
@@ -178,6 +191,7 @@ func (q *Queries) ListProblemsWithPagination(ctx context.Context, arg ListProble
 			&i.Difficulty,
 			&i.SubmissionLink,
 			&i.Platform,
+			&i.LockID,
 		); err != nil {
 			return nil, err
 		}
@@ -209,7 +223,7 @@ SET
     last_updated_by = $12
 WHERE
     id = $13
-RETURNING id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform
+RETURNING id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id
 `
 
 type UpdateProblemParams struct {
@@ -262,6 +276,7 @@ func (q *Queries) UpdateProblem(ctx context.Context, arg UpdateProblemParams) (P
 		&i.Difficulty,
 		&i.SubmissionLink,
 		&i.Platform,
+		&i.LockID,
 	)
 	return i, err
 }

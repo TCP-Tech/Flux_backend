@@ -8,7 +8,8 @@ CREATE TABLE contest (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), -- Timestamp of the last update
     start_time TIMESTAMP WITH TIME ZONE NOT NULL, -- When the contest begins
     end_time TIMESTAMP WITH TIME ZONE NOT NULL, -- When the contest ends
-    is_published BOOLEAN NOT NULL DEFAULT FALSE -- Is the contest visible to users?
+    is_published BOOLEAN NOT NULL DEFAULT FALSE, -- Is the contest visible to users?
+    lock_id UUID NOT NULL REFERENCES locks(id)
 );
 
 -- indexes for common lookup fields
@@ -24,7 +25,7 @@ CREATE TRIGGER update_contest_updated_at BEFORE UPDATE ON contest FOR EACH ROW E
 CREATE TABLE contest_problems (
     -- Composite Primary Key: Ensures a problem is listed only once per contest
     contest_id UUID NOT NULL REFERENCES contest(id),
-    problem_id UUID NOT NULL REFERENCES problems(id),
+    problem_id INTEGER NOT NULL REFERENCES problems(id),
     score INTEGER NOT NULL, -- The score value for this specific problem within this contest
 
     PRIMARY KEY (contest_id, problem_id) -- Defines the composite primary key

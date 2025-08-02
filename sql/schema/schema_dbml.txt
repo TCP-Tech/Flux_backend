@@ -23,6 +23,11 @@ Table user_roles {
 Ref: user_roles.user_id > users.id
 Ref: user_roles.role_name > roles.role_name
 
+Table locks {
+  id uuid pk
+  timeout datetime
+}
+
 Table problems {
   id uuid pk
   title varchar(255)
@@ -39,12 +44,13 @@ Table problems {
   difficulty int
   submission_link uri
   platform varchar(255)
+  lock_id int
 }
 
 Ref: problems.created_by > users.id
 
-Table contest {
-  id uuid pk
+Table contests {
+  id int pk
   title varchar(255)
   created_by uuid
   created_at datetime
@@ -52,9 +58,12 @@ Table contest {
   start_time datetime
   end_time datetime
   is_published boolean
+  lock_id int
 }
 
-Ref: contest.created_by > users.id
+Ref: problems.lock_id > locks.id
+Ref: contests.lock_id > locks.id
+Ref: contests.created_by > users.id
 
 Table contest_problems {
   contest_id uuid pk
@@ -84,7 +93,7 @@ Ref: user_scores.problem_id > contest_problems.problem_id
 Ref: solved.user_id > users.id
 Ref: solved.contest_id > contest_problems.contest_id
 Ref: solved.problem_id > contest_problems.problem_id
-Ref: contest_problems.contest_id > contest.id
+Ref: contest_problems.contest_id > contests.id
 Ref: contest_problems.problem_id > problems.id
 
 Table bots {
@@ -107,7 +116,7 @@ Table submissions{
 }
 
 Ref: submissions.submitted_by > users.id
-Ref: submissions.contest_id > contest.id
+Ref: submissions.contest_id > contests.id
 Ref: submissions.problem_id > problems.id
 Ref: submissions.bot_account_id > bots.id
 
@@ -126,7 +135,7 @@ Table tournament_contests {
   round int
 }
 
-Ref: tournament_contests.contest_id > contest.id
+Ref: tournament_contests.contest_id > contests.id
 Ref: tournament_contests.tournament_id > tournaments.id
 
 Table contest_registered_users {
@@ -135,5 +144,4 @@ Table contest_registered_users {
 }
 
 Ref: contest_registered_users.user_id > users.id
-Ref: contest_registered_users.contest_id > contest.id
-
+Ref: contest_registered_users.contest_id > contests.id

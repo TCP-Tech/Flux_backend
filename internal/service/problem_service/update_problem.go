@@ -21,12 +21,24 @@ func (p *ProblemService) UpdateProblem(
 		return
 	}
 
-	// check if they are allowed to update it
-	err = p.authorizeProblemUpdateAccess(ctx, problem.ID, user.ID)
+	// fetch the problem from db
+	dbProblem, err := p.DB.GetProblemById(ctx, problem.ID)
 	if err != nil {
-		if errors.Is(err, flux_errors.ErrUnAuthorized) {
-			log.Warnf("user %s tried to update the problem with id %v", user.UserName, problem.ID)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = fmt.Errorf("%w, problem with id %v do not exist", flux_errors.ErrNotFound, problem.ID)
+			log.Error(err)
+			return
 		}
+		err = fmt.Errorf("%w, unable to fetch problem with id %v, %w",
+			flux_errors.ErrInternal, problem.ID, err)
+		log.Error(err)
+		return
+	}
+
+	// check if they are allowed to update it
+	err = p.UserServiceConfig.AuthorizeCreatorAccess(ctx, dbProblem.CreatedBy, user.ID)
+	if err != nil {
+		log.Warnf("user %s tried to modify problem with id %v", user.UserName, problem.ID)
 		return
 	}
 
@@ -43,7 +55,7 @@ func (p *ProblemService) UpdateProblem(
 	}
 
 	// update the problem in the database
-	dbProblem, err := p.DB.UpdateProblem(ctx, params)
+	dbProblem, err = p.DB.UpdateProblem(ctx, params)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			err = fmt.Errorf("%w, problem with id %v do not exist", flux_errors.ErrNotFound, problem.ID)

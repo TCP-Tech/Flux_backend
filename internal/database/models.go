@@ -74,17 +74,24 @@ type Contest struct {
 	StartTime   time.Time `json:"start_time"`
 	EndTime     time.Time `json:"end_time"`
 	IsPublished bool      `json:"is_published"`
+	LockID      uuid.UUID `json:"lock_id"`
 }
 
 type ContestProblem struct {
 	ContestID uuid.UUID `json:"contest_id"`
-	ProblemID uuid.UUID `json:"problem_id"`
+	ProblemID int32     `json:"problem_id"`
 	Score     int32     `json:"score"`
 }
 
 type ContestRegisteredUser struct {
 	UserID    uuid.UUID `json:"user_id"`
 	ContestID uuid.UUID `json:"contest_id"`
+}
+
+type Lock struct {
+	ID      uuid.UUID      `json:"id"`
+	Timeout time.Time      `json:"timeout"`
+	Access  sql.NullString `json:"access"`
 }
 
 type Problem struct {
@@ -104,6 +111,7 @@ type Problem struct {
 	Difficulty       int32                 `json:"difficulty"`
 	SubmissionLink   sql.NullString        `json:"submission_link"`
 	Platform         NullPlatformType      `json:"platform"`
+	LockID           uuid.NullUUID         `json:"lock_id"`
 }
 
 type Role struct {

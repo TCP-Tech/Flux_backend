@@ -116,3 +116,27 @@ func (u *UserService) FetchUserFromClaims(ctx context.Context) (user database.Us
 	user, err = u.FetchUserFromDb(ctx, claims.UserName, claims.RollNo)
 	return
 }
+
+func (u *UserService) AuthorizeCreatorAccess(
+	ctx context.Context,
+	creatorId uuid.UUID,
+	userId uuid.UUID,
+) error {
+	// check if they are hc
+	err := u.AuthorizeUserRole(ctx, userId, RoleHC)
+	if err == nil {
+		return nil
+	}
+
+	// check if they are manager currently
+	err = u.AuthorizeUserRole(ctx, userId, RoleManager)
+	if err != nil {
+		return err
+	}
+
+	if userId != creatorId {
+		return flux_errors.ErrUnAuthorized
+	}
+
+	return nil
+}

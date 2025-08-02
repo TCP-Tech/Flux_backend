@@ -8,6 +8,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	TimeLayout = "2006-01-02 15:04:05"
+)
+
 func respondWithJson(w http.ResponseWriter, code int, payload []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

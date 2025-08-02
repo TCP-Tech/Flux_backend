@@ -6,6 +6,15 @@ CREATE TYPE platform_type AS ENUM (
     'codeforces'
 );
 
+-- locks for locking a problem and a contest until they start
+CREATE TABLE locks (
+    id UUID PRIMARY KEY NOT NULL,
+    timeout TIMESTAMP WITH TIME ZONE NOT NULL,
+    access VARCHAR(50) DEFAULT 'role_manager' 
+           REFERENCES roles(role_name) 
+           ON DELETE SET NULL
+);
+
 -- Create the problems table using the sequence for the primary key
 CREATE TABLE problems (
     id INTEGER PRIMARY KEY DEFAULT nextval('problems_id_seq'),
@@ -23,7 +32,8 @@ CREATE TABLE problems (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     difficulty INTEGER NOT NULL,
     submission_link TEXT UNIQUE,
-    platform platform_type  
+    platform platform_type,
+    lock_id UUID REFERENCES locks(id) 
 );
 
 -- indexes for common lookup fields
@@ -44,6 +54,7 @@ $func$ language 'plpgsql';
 -- A trigger to run the function before every update
 CREATE TRIGGER update_problems_updated_at BEFORE UPDATE ON problems FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+
 -- +goose Down
 DROP TRIGGER update_problems_updated_at ON problems;
 DROP FUNCTION update_updated_at_column();
@@ -52,3 +63,4 @@ DROP INDEX idx_problems_created_by;
 DROP TABLE problems;
 DROP SEQUENCE problems_id_seq;
 DROP TYPE platform_type;
+DROP TABLE locks;

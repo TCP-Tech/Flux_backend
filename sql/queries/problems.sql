@@ -66,3 +66,7 @@ WHERE
     )
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
+
+-- name: CreateLock :one
+INSERT INTO locks (timeout) VALUES ($1)
+RETURNING *;

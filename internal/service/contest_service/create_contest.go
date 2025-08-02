@@ -1,2 +1,0 @@
-package cotnest_service
-

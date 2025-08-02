@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -14,7 +15,6 @@ import (
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
-	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func (p *ProblemService) validateProblem(
@@ -225,42 +225,13 @@ func dbProblemsToServiceProblems(dbProblems []database.Problem) ([]Problem, erro
 	return problems, convErr
 }
 
-func (p *ProblemService) authorizeProblemUpdateAccess(
-	ctx context.Context,
-	problemId int32,
-	userId uuid.UUID,
-) error {
-	// check if they are hc
-	err := p.UserServiceConfig.AuthorizeUserRole(ctx, userId, user_service.RoleHC)
-	if err == nil {
-		return nil
+func validateLock(lock FluxLock) error {
+	// validate time
+	if lock.Timeout.Before(time.Now().Add(time.Minute * 10)) {
+		return fmt.Errorf(
+			"%w, lock's timeout should end atleast 10 minutes from now",
+			flux_errors.ErrInvalidInput,
+		)
 	}
-
-	// check if they are a manager currently
-	err = p.UserServiceConfig.AuthorizeUserRole(ctx, userId, user_service.RoleManager)
-	if err != nil {
-		return err
-	}
-
-	// fetch the problem from db
-	dbProblem, err := p.DB.GetProblemById(ctx, problemId)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, problem with id %v do not exist", flux_errors.ErrNotFound, problemId)
-			log.Error(err)
-			return err
-		}
-		err = fmt.Errorf("%w, unable to fetch problem with id %v, %w",
-			flux_errors.ErrInternal, problemId, err)
-		log.Error(err)
-		return err
-	}
-
-	// check if they are the creator of the problem
-	if userId != dbProblem.CreatedBy {
-		err = fmt.Errorf("%w, user not allowed to modify this problem", flux_errors.ErrUnAuthorized)
-		return err
-	}
-
 	return nil
 }

@@ -2,6 +2,7 @@ package problem_service
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sqlc-dev/pqtype"
@@ -10,7 +11,7 @@ import (
 )
 
 type ProblemService struct {
-	DB         *database.Queries
+	DB                *database.Queries
 	UserServiceConfig *user_service.UserService
 }
 
@@ -46,4 +47,9 @@ type DBProblemData struct {
 	notes            sql.NullString
 	submissionLink   sql.NullString
 	platform         database.NullPlatformType
+}
+
+type FluxLock struct {
+	ID      uuid.UUID         `json:"lock_id"`
+	Timeout time.Time         `json:"timeout"`
 }
