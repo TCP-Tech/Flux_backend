@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -33,17 +32,17 @@ func (p *ProblemService) validateProblem(
 	if problem.ExampleTCs != nil {
 		if problem.ExampleTCs.NumTestCases != nil {
 			if *problem.ExampleTCs.NumTestCases != len(problem.ExampleTCs.Examples) {
-				return fmt.Errorf("%w, num_test_cases != number of example test cases provided", flux_errors.ErrInvalidInput)
+				return fmt.Errorf("%w, num_test_cases != number of example test cases provided", flux_errors.ErrInvalidRequest)
 			}
 		} else if len(problem.ExampleTCs.Examples) > 1 {
-			return fmt.Errorf("%w, num_test_cases is nil but number of example test cases are plural", flux_errors.ErrInvalidInput)
+			return fmt.Errorf("%w, num_test_cases is nil but number of example test cases are plural", flux_errors.ErrInvalidRequest)
 		}
 	}
 
 	// validate platform
 	if problem.Platform != nil {
 		if problem.SubmissionLink == nil {
-			return fmt.Errorf("%w, platform is provided but submission link is not provided", flux_errors.ErrInvalidInput)
+			return fmt.Errorf("%w, platform is provided but submission link is not provided", flux_errors.ErrInvalidRequest)
 		}
 		_, err = p.DB.CheckPlatformType(ctx, *problem.Platform)
 		if err != nil {
@@ -52,7 +51,7 @@ func (p *ProblemService) validateProblem(
 				// code for invalid input value
 				if pqErr.Code == "22P02" {
 					log.Error(pqErr)
-					return fmt.Errorf("%w, invalid platform type provided", flux_errors.ErrInvalidInput)
+					return fmt.Errorf("%w, invalid platform type provided", flux_errors.ErrInvalidRequest)
 				}
 			}
 			// Handle any other database errors (e.g., connection failure)
@@ -60,8 +59,20 @@ func (p *ProblemService) validateProblem(
 			return fmt.Errorf("%w, unable to cast platform type, %w", flux_errors.ErrInternal, err)
 		}
 	} else if problem.SubmissionLink != nil {
-		return fmt.Errorf("%w, submission link is provided but platform is not provided", flux_errors.ErrInvalidInput)
+		return fmt.Errorf("%w, submission link is provided but platform is not provided", flux_errors.ErrInvalidRequest)
 	}
+
+	// validate lock
+	// if problem.LockId.Valid {
+	// 	dbLock, err := p.GetLockById(ctx, problem.LockId.UUID)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	err = validateLock(dbLock)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
 
 	return nil
 }
@@ -102,6 +113,11 @@ func getDBProblemDataFromProblem(problem Problem) (DBProblemData, error) {
 		platform.PlatformType = database.PlatformType(*problem.Platform)
 	}
 
+	// var lockId uuid.NullUUID
+	// if problem.LockId != uuid.Nil {
+
+	// }
+
 	return DBProblemData{
 		exampleTestCases: exampleTestCases,
 		notes:            notes,
@@ -131,6 +147,7 @@ func getAddProblemParams(userId uuid.UUID, problem Problem) (database.AddProblem
 		Difficulty:       problem.Difficulty,
 		SubmissionLink:   dbProblemData.submissionLink,
 		Platform:         dbProblemData.platform,
+		LockID:           problem.LockId,
 	}, nil
 }
 
@@ -223,15 +240,4 @@ func dbProblemsToServiceProblems(dbProblems []database.Problem) ([]Problem, erro
 		problems = append(problems, problem)
 	}
 	return problems, convErr
-}
-
-func validateLock(lock FluxLock) error {
-	// validate time
-	if lock.Timeout.Before(time.Now().Add(time.Minute * 10)) {
-		return fmt.Errorf(
-			"%w, lock's timeout should end atleast 10 minutes from now",
-			flux_errors.ErrInvalidInput,
-		)
-	}
-	return nil
 }

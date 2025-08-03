@@ -89,9 +89,13 @@ type ContestRegisteredUser struct {
 }
 
 type Lock struct {
-	ID      uuid.UUID      `json:"id"`
-	Timeout time.Time      `json:"timeout"`
-	Access  sql.NullString `json:"access"`
+	ID          uuid.UUID      `json:"id"`
+	Timeout     time.Time      `json:"timeout"`
+	Name        string         `json:"name"`
+	CreatedBy   uuid.UUID      `json:"created_by"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Description string         `json:"description"`
+	Access      sql.NullString `json:"access"`
 }
 
 type Problem struct {

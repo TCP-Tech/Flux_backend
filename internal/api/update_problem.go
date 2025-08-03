@@ -30,9 +30,10 @@ func (a *Api) HandlerUpdateProblem(w http.ResponseWriter, r *http.Request) {
 	responseBytes, err := json.Marshal(problemResponse)
 	if err != nil {
 		log.Errorf("unable to marshal %v, %v", problemResponse, err)
-		respondWithJson(
-			w, http.StatusOK,
-			[]byte("problem updated successfully, but there was an error preparing response"),
+		http.Error(
+			w,
+			"problem updated successfully, but there was an error preparing response",
+			http.StatusOK,
 		)
 		return
 	}

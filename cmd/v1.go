@@ -18,5 +18,8 @@ func NewV1Router() *chi.Mux {
 	v1.Post("/problems", middleware.JWTMiddleware(apiConfig.HandlerAddProblem))
 	v1.Put("/problems", middleware.JWTMiddleware(apiConfig.HandlerUpdateProblem))
 	v1.Get("/problems", middleware.JWTMiddleware(apiConfig.HandlerGetProblems))
+	v1.Post("/locks", middleware.JWTMiddleware(apiConfig.HandlerCreateLock))
+	v1.Get("/locks", middleware.JWTMiddleware(apiConfig.HandlerGetLocksByFilter))
+	v1.Put("/locks", middleware.JWTMiddleware(apiConfig.HandlerUpdateLock))
 	return v1
 }

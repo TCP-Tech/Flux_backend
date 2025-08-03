@@ -7,23 +7,26 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/tcp_snm/flux/internal/service/problem_service"
+	"github.com/tcp_snm/flux/internal/service/lock_service"
 )
 
 func (a *Api) HandlerCreateLock(w http.ResponseWriter, r *http.Request) {
-	var lock problem_service.FluxLock
+	// decode the body
+	var lock lock_service.FluxLock
 	err := decodeJsonBody(r.Body, &lock)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	id, err := a.ProblemServiceConfig.CreateLock(r.Context(), lock)
+	// create lock with service
+	id, err := a.LockServiceConfig.CreateLock(r.Context(), lock)
 	if err != nil {
 		handlerError(err, w)
 		return
 	}
 
+	// convert into []byte for response
 	response := struct {
 		ID uuid.UUID `json:"lock_id"`
 	}{ID: id}
@@ -39,4 +42,38 @@ func (a *Api) HandlerCreateLock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJson(w, http.StatusCreated, bytes)
+}
+
+func (a *Api) HandlerUpdateLock(w http.ResponseWriter, r *http.Request) {
+	// get the data
+	var currentLock lock_service.FluxLock
+	err := decodeJsonBody(r.Body, &currentLock)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// update the lock
+	updatedLock, err := a.LockServiceConfig.UpdateLock(
+		r.Context(),
+		currentLock,
+	)
+	if err != nil {
+		handlerError(err, w)
+		return
+	}
+
+	// marshal
+	bytes, err := json.Marshal(updatedLock)
+	if err != nil {
+		log.Error(err)
+		http.Error(
+			w,
+			"lock was updated, but there was an error preparing response",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	respondWithJson(w, http.StatusOK, bytes)
 }

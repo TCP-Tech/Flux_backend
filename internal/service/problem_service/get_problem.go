@@ -37,8 +37,8 @@ func (p *ProblemService) ListProblemsWithPagination(
 	pageStr string,
 	pageSizeStr string,
 	title string,
-	userName string,
-	rollNo string,
+	creatorUserName string,
+	creatorRollNo string,
 ) ([]Problem, error) {
 	// Set a default page size and a maximum limit
 	var pageSize int32 = 10
@@ -47,7 +47,7 @@ func (p *ProblemService) ListProblemsWithPagination(
 		if err == nil && parsedSize > 0 {
 			pageSize = int32(parsedSize)
 		} else {
-			err = fmt.Errorf("%w, page_size must be a valid integer", flux_errors.ErrInvalidInput)
+			err = fmt.Errorf("%w, page_size must be a valid integer", flux_errors.ErrInvalidRequest)
 			return nil, err
 		}
 	} else {
@@ -61,7 +61,7 @@ func (p *ProblemService) ListProblemsWithPagination(
 		if err == nil && parsedPage > 0 {
 			page = int32(parsedPage)
 		} else {
-			err = fmt.Errorf("%w, page number must be a valid integer", flux_errors.ErrInvalidInput)
+			err = fmt.Errorf("%w, page number must be a valid integer", flux_errors.ErrInvalidRequest)
 			return nil, err
 		}
 	} else {
@@ -69,16 +69,13 @@ func (p *ProblemService) ListProblemsWithPagination(
 	}
 
 	// filter for created_by or last_updated_by
-	var authorId uuid.NullUUID
-	if userName != "" || rollNo != "" {
-		user, err := p.UserServiceConfig.FetchUserFromDb(ctx, userName, rollNo)
+	var created_by uuid.UUID
+	if creatorUserName != "" || creatorRollNo != "" {
+		user, err := p.UserServiceConfig.FetchUserFromDb(ctx, creatorUserName, creatorRollNo)
 		if err != nil {
 			return nil, err
 		}
-		authorId = uuid.NullUUID{
-			Valid: true,
-			UUID:  user.ID,
-		}
+		created_by = user.ID
 	}
 
 	// calculate offset from pageNumber
@@ -88,10 +85,10 @@ func (p *ProblemService) ListProblemsWithPagination(
 	dbProblems, err := p.DB.ListProblemsWithPagination(
 		ctx,
 		database.ListProblemsWithPaginationParams{
-			Limit:    pageSize,
-			Offset:   offset,
-			Title:    fmt.Sprintf("%%%s%%", title),
-			AuthorID: authorId,
+			Limit:  pageSize,
+			Offset: offset,
+			Title:     title,
+			Column2: created_by,
 		},
 	)
 	if err != nil {

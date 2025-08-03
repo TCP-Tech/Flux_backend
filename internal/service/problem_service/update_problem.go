@@ -35,10 +35,18 @@ func (p *ProblemService) UpdateProblem(
 		return
 	}
 
-	// check if they are allowed to update it
-	err = p.UserServiceConfig.AuthorizeCreatorAccess(ctx, dbProblem.CreatedBy, user.ID)
+	// authorize
+	err = p.UserServiceConfig.AuthorizeCreatorAccess(
+		ctx,
+		dbProblem.CreatedBy,
+		user.ID,
+		fmt.Sprintf(
+			"user %s tried to modify problem with id %v",
+			user.UserName,
+			problem.ID,
+		),
+	)
 	if err != nil {
-		log.Warnf("user %s tried to modify problem with id %v", user.UserName, problem.ID)
 		return
 	}
 
@@ -67,7 +75,7 @@ func (p *ProblemService) UpdateProblem(
 			if pqErr.Code == flux_errors.CodeUniqueConstraintViolation {
 				err = fmt.Errorf(
 					"%w, problem with that key already exists",
-					flux_errors.ErrInvalidInput,
+					flux_errors.ErrInvalidRequest,
 				)
 				return
 			}

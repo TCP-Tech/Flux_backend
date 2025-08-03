@@ -21,7 +21,7 @@ func (u *UserService) FetchUserFromDb(
 	rollNo string,
 ) (dbUser database.User, err error) {
 	if userName == "" && rollNo == "" {
-		err = fmt.Errorf("%w, either user_name or roll_no must be provided", flux_errors.ErrInvalidInput)
+		err = fmt.Errorf("%w, either user_name or roll_no must be provided", flux_errors.ErrInvalidRequest)
 		return
 	}
 	if userName != "" {
@@ -90,6 +90,7 @@ func (u *UserService) AuthorizeUserRole(
 	ctx context.Context,
 	userId uuid.UUID,
 	role UserRole,
+	warnMessage string,
 ) error {
 	roles, err := u.FetchUserRoles(ctx, userId)
 	if err != nil {
@@ -97,6 +98,9 @@ func (u *UserService) AuthorizeUserRole(
 	}
 	if slices.Contains(roles, string(role)) {
 		return nil
+	}
+	if warnMessage != "" {
+		log.Warn(warnMessage)
 	}
 	return flux_errors.ErrUnAuthorized
 }
@@ -121,15 +125,26 @@ func (u *UserService) AuthorizeCreatorAccess(
 	ctx context.Context,
 	creatorId uuid.UUID,
 	userId uuid.UUID,
+	warnMessage string,
 ) error {
 	// check if they are hc
-	err := u.AuthorizeUserRole(ctx, userId, RoleHC)
+	err := u.AuthorizeUserRole(
+		ctx,
+		userId,
+		RoleHC,
+		"",
+	)
 	if err == nil {
 		return nil
 	}
 
 	// check if they are manager currently
-	err = u.AuthorizeUserRole(ctx, userId, RoleManager)
+	err = u.AuthorizeUserRole(
+		ctx,
+		userId,
+		RoleManager,
+		warnMessage,
+	)
 	if err != nil {
 		return err
 	}

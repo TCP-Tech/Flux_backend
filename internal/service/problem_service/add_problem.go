@@ -11,7 +11,10 @@ import (
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
-func (p *ProblemService) AddProblem(ctx context.Context, problem Problem) (id int32, err error) {
+func (p *ProblemService) AddProblem(
+	ctx context.Context,
+	problem Problem,
+) (id int32, err error) {
 	// get the user details from claims
 	user, err := p.UserServiceConfig.FetchUserFromClaims(ctx)
 	if err != nil {
@@ -19,15 +22,15 @@ func (p *ProblemService) AddProblem(ctx context.Context, problem Problem) (id in
 	}
 
 	// authorize
-	err = p.UserServiceConfig.AuthorizeUserRole(ctx, user.ID, user_service.RoleManager)
+	err = p.UserServiceConfig.AuthorizeUserRole(
+		ctx, user.ID, user_service.RoleManager,
+		fmt.Sprintf(
+			"%v, user %s tried for manager access to add a problem",
+			flux_errors.ErrUnAuthorized,
+			user.UserName,
+		),
+	)
 	if err != nil {
-		if errors.Is(err, flux_errors.ErrUnAuthorized) {
-			log.Errorf(
-				"%v, user %s tried for manager access to add a problem",
-				flux_errors.ErrUnAuthorized,
-				user.UserName,
-			)
-		}
 		return
 	}
 
@@ -49,7 +52,7 @@ func (p *ProblemService) AddProblem(ctx context.Context, problem Problem) (id in
 		var pqErr *pq.Error
 		if errors.As(err, &pqErr) {
 			if pqErr.Code == flux_errors.CodeUniqueConstraintViolation {
-				err = fmt.Errorf("%w, %s problem with that key already exist", flux_errors.ErrInvalidInput, pqErr.Detail)
+				err = fmt.Errorf("%w, %s problem with that key already exist", flux_errors.ErrInvalidRequest, pqErr.Detail)
 				return
 			}
 		}

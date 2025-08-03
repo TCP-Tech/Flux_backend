@@ -31,7 +31,11 @@ func (a *Api) HandlerAddProblem(w http.ResponseWriter, r *http.Request) {
 	response_bytes, err := json.Marshal(response)
 	if err != nil {
 		log.Errorf("unable to marshal %v, %v", response, err)
-		respondWithJson(w, http.StatusOK, []byte("problem added successfully, but there was an error sending response"))
+		respondWithJson(
+			w,
+			http.StatusInternalServerError,
+			[]byte("problem added successfully, but there was an error sending response"),
+		)
 		return
 	}
 

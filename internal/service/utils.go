@@ -71,7 +71,7 @@ func ValidateInput(inp any) error {
 				errorMessage := translateValidationError(validationErrors[0])
 				log.Error(errorMessage)
 				// Wrap the error with a custom invalid input error
-				return fmt.Errorf("%w, %s", flux_errors.ErrInvalidInput, errorMessage)
+				return fmt.Errorf("%w, %s", flux_errors.ErrInvalidRequest, errorMessage)
 			}
 		}
 	}

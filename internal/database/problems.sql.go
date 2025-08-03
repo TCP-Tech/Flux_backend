@@ -28,7 +28,8 @@ INSERT INTO problems (
     last_updated_by,
     difficulty,
     submission_link,
-    platform
+    platform,
+    lock_id
 ) VALUES (
     $1, -- title
     $2, -- statement
@@ -42,7 +43,8 @@ INSERT INTO problems (
     $9, -- last_updated_by (UUID)
     $10, -- difficulty (can be NULL)
     $11, -- submission_link (can be NULL)
-    $12  -- platform (can be NULL)
+    $12, -- platform (can be NULL)
+    $13 -- lock_id
 )
 RETURNING id, created_at, updated_at
 `
@@ -60,6 +62,7 @@ type AddProblemParams struct {
 	Difficulty       int32                 `json:"difficulty"`
 	SubmissionLink   sql.NullString        `json:"submission_link"`
 	Platform         NullPlatformType      `json:"platform"`
+	LockID           uuid.NullUUID         `json:"lock_id"`
 }
 
 type AddProblemRow struct {
@@ -82,6 +85,7 @@ func (q *Queries) AddProblem(ctx context.Context, arg AddProblemParams) (AddProb
 		arg.Difficulty,
 		arg.SubmissionLink,
 		arg.Platform,
+		arg.LockID,
 	)
 	var i AddProblemRow
 	err := row.Scan(&i.ID, &i.CreatedAt, &i.UpdatedAt)
@@ -97,18 +101,6 @@ func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 string) (strin
 	var column_1 string
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const createLock = `-- name: CreateLock :one
-INSERT INTO locks (timeout) VALUES ($1)
-RETURNING id, timeout, access
-`
-
-func (q *Queries) CreateLock(ctx context.Context, timeout time.Time) (Lock, error) {
-	row := q.db.QueryRowContext(ctx, createLock, timeout)
-	var i Lock
-	err := row.Scan(&i.ID, &i.Timeout, &i.Access)
-	return i, err
 }
 
 const getProblemById = `-- name: GetProblemById :one
@@ -145,27 +137,27 @@ SELECT id, title, statement, input_format, output_format, example_testcases, not
 WHERE
     title ILIKE $1 AND
     (
-        $4::uuid IS NULL OR
-        created_by = $4::uuid OR
-        last_updated_by = $4::uuid
-    )
+        $2::uuid = created_by OR
+        $2::uuid IS NULL
+    ) AND
+    lock_id IS NULL
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3
+LIMIT $3 OFFSET $4
 `
 
 type ListProblemsWithPaginationParams struct {
-	Title    string        `json:"title"`
-	Limit    int32         `json:"limit"`
-	Offset   int32         `json:"offset"`
-	AuthorID uuid.NullUUID `json:"author_id"`
+	Title   string    `json:"title"`
+	Column2 uuid.UUID `json:"column_2"`
+	Limit   int32     `json:"limit"`
+	Offset  int32     `json:"offset"`
 }
 
 func (q *Queries) ListProblemsWithPagination(ctx context.Context, arg ListProblemsWithPaginationParams) ([]Problem, error) {
 	rows, err := q.db.QueryContext(ctx, listProblemsWithPagination,
 		arg.Title,
+		arg.Column2,
 		arg.Limit,
 		arg.Offset,
-		arg.AuthorID,
 	)
 	if err != nil {
 		return nil, err

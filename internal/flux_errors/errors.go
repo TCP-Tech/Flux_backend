@@ -10,7 +10,7 @@ const (
 
 var (
 	ErrInternal                  = errors.New("internal service error. please try again later")
-	ErrInvalidInput              = errors.New("invalid input")
+	ErrInvalidRequest            = errors.New("invalid request")
 	ErrUserAlreadyExists         = errors.New("some other user has already taken that key")
 	ErrInvalidUserCredentials    = errors.New("invalid username or roll_no and password")
 	ErrInvalidRequestCredentials = errors.New("invalid request credentials")

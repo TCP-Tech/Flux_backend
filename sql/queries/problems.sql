@@ -12,7 +12,8 @@ INSERT INTO problems (
     last_updated_by,
     difficulty,
     submission_link,
-    platform
+    platform,
+    lock_id
 ) VALUES (
     $1, -- title
     $2, -- statement
@@ -26,7 +27,8 @@ INSERT INTO problems (
     $9, -- last_updated_by (UUID)
     $10, -- difficulty (can be NULL)
     $11, -- submission_link (can be NULL)
-    $12  -- platform (can be NULL)
+    $12, -- platform (can be NULL)
+    $13 -- lock_id
 )
 RETURNING id, created_at, updated_at;
 
@@ -60,13 +62,9 @@ SELECT * FROM problems
 WHERE
     title ILIKE $1 AND
     (
-        sqlc.narg(author_id)::uuid IS NULL OR
-        created_by = sqlc.narg(author_id)::uuid OR
-        last_updated_by = sqlc.narg(author_id)::uuid
-    )
+        $2::uuid = created_by OR
+        $2::uuid IS NULL
+    ) AND
+    lock_id IS NULL
 ORDER BY created_at DESC
-LIMIT $2 OFFSET $3;
-
--- name: CreateLock :one
-INSERT INTO locks (timeout) VALUES ($1)
-RETURNING *;
+LIMIT $3 OFFSET $4;

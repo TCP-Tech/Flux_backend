@@ -41,10 +41,10 @@ func (a *Api) HandlerSignUp(w http.ResponseWriter, r *http.Request) {
 	response_bytes, err := json.Marshal(user)
 	if err != nil {
 		log.Errorf("cannot marshal %v. %v", user, err)
-		respondWithJson(
+		http.Error(
 			w,
+			"User signed up successfully, but there was an issue preparing the response data. Please try logging in.",
 			http.StatusInternalServerError,
-			[]byte("User signed up successfully, but there was an issue preparing the response data. Please try logging in."),
 		)
 		return
 	}

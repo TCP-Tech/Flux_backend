@@ -11,6 +11,7 @@ import (
 	"github.com/tcp_snm/flux/internal/email"
 	"github.com/tcp_snm/flux/internal/service"
 	"github.com/tcp_snm/flux/internal/service/auth_service"
+	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 
@@ -58,6 +59,13 @@ func initAuthService(db *database.Queries, us *user_service.UserService) *auth_s
 	}
 }
 
+func initLockService(db *database.Queries, us *user_service.UserService) *lock_service.LockService {
+	return &lock_service.LockService{
+		DB:                db,
+		UserServiceConfig: us,
+	}
+}
+
 func initProblemService(db *database.Queries, us *user_service.UserService) *problem_service.ProblemService {
 	log.Info("initializing problem service")
 	return &problem_service.ProblemService{
@@ -72,11 +80,14 @@ func initApi(db *database.Queries) *api.Api {
 	log.Info("user service created")
 	as := initAuthService(db, us)
 	log.Info("auth service created")
+	ls := initLockService(db, us)
+	log.Info("lock service created")
 	ps := initProblemService(db, us)
 	log.Info("problem service created")
 	a := api.Api{
 		AuthServiceConfig:    as,
 		ProblemServiceConfig: ps,
+		LockServiceConfig:    ls,
 	}
 	return &a
 }

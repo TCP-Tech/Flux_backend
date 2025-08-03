@@ -37,7 +37,7 @@ func handlerError(err error, w http.ResponseWriter) {
 		switch {
 		case errors.Is(err, flux_errors.ErrVerificationTokenExpired):
 			fallthrough
-		case errors.Is(err, flux_errors.ErrInvalidInput):
+		case errors.Is(err, flux_errors.ErrInvalidRequest):
 			statusCode = http.StatusBadRequest
 		case errors.Is(err, flux_errors.ErrNotFound):
 			statusCode = http.StatusNotFound

@@ -152,7 +152,7 @@ func (a *AuthService) validateVerificationToken(
 		// return expiration error
 		return fmt.Errorf(
 			"%w, %w",
-			flux_errors.ErrInvalidInput,
+			flux_errors.ErrInvalidRequest,
 			flux_errors.ErrVerificationTokenExpired,
 		)
 	}
@@ -204,10 +204,13 @@ func (a *AuthService) verifyToken(
 	}
 
 	// get token from db
-	dbToken, err = a.DB.GetTokenByEmailAndPurpose(ctx, database.GetTokenByEmailAndPurposeParams{
-		Email:   userMail,
-		Purpose: string(purpose),
-	})
+	dbToken, err = a.DB.GetTokenByEmailAndPurpose(
+		ctx,
+		database.GetTokenByEmailAndPurposeParams{
+			Email:   userMail,
+			Purpose: string(purpose),
+		},
+	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			err = fmt.Errorf("%w, invalid token provided", flux_errors.ErrCorruptedVerification)
@@ -222,7 +225,7 @@ func (a *AuthService) verifyToken(
 	err = bcrypt.CompareHashAndPassword([]byte(dbToken.HashedToken), []byte(token))
 	if err != nil {
 		log.Infof("invalid token. failed to match token hash and token, %v", err)
-		err = fmt.Errorf("%w, plese cross check your token", flux_errors.ErrCorruptedVerification)
+		err = fmt.Errorf("%w, please cross check your token", flux_errors.ErrCorruptedVerification)
 		return
 	}
 

@@ -1,0 +1,135 @@
+package lock_service
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+
+	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
+	"github.com/tcp_snm/flux/internal/database"
+	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service/user_service"
+)
+
+func (l *LockService) GetLockById(
+	ctx context.Context,
+	id uuid.UUID,
+) (res FluxLock, err error) {
+	// fetch user from claims
+	user, err := l.UserServiceConfig.FetchUserFromClaims(ctx)
+	if err != nil {
+		return
+	}
+
+	// authorize
+	err = l.UserServiceConfig.AuthorizeUserRole(
+		ctx,
+		user.ID,
+		user_service.RoleManager,
+		fmt.Sprintf(
+			"user %s tried to view lock with id %v",
+			user.ID,
+			id,
+		),
+	)
+	if err != nil {
+		return
+	}
+
+	dbLock, err := l.DB.GetLockById(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = fmt.Errorf(
+				"%w, lock with id %v do not exist",
+				flux_errors.ErrNotFound,
+				id,
+			)
+			return
+		}
+		err = fmt.Errorf(
+			"%w, cannot fetch lock with id %v from db, %w",
+			flux_errors.ErrInternal,
+			id,
+			err,
+		)
+		return
+	}
+
+	return dbLockToServiceLock(dbLock), nil
+}
+
+func (l *LockService) GetLocksByFilters(
+	ctx context.Context,
+	lockName string,
+	creatorUserName string,
+	creatorRollNo string,
+) ([]FluxLock, error) {
+	// fetch user from claims
+	user, err := l.UserServiceConfig.FetchUserFromClaims(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// authorize
+	err = l.UserServiceConfig.AuthorizeUserRole(
+		ctx,
+		user.ID,
+		user_service.RoleManager,
+		fmt.Sprintf(
+			"user %s tried to view lock with filters",
+			user.UserName,
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// fetch creator id if user_name or roll_no is provided
+	var createdBy uuid.NullUUID
+	if creatorUserName != "" || creatorRollNo != "" {
+		user, err := l.UserServiceConfig.FetchUserFromDb(
+			ctx,
+			creatorUserName,
+			creatorRollNo,
+		)
+		if err != nil {
+			return nil, err
+		}
+		createdBy.Valid = true
+		createdBy.UUID = user.ID
+	}
+
+	// fetch the locks by filters
+	dbLocks, err := l.DB.GetLocksByFilter(
+		ctx,
+		database.GetLocksByFilterParams{
+			Name:      fmt.Sprintf("%%%s%%", lockName),
+			CreatedBy: createdBy,
+		},
+	)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot fetch locks from db, %w",
+			flux_errors.ErrInternal,
+			err,
+		)
+		log.WithFields(
+			log.Fields{
+				"lockName":          lockName,
+				"creator_user_name": creatorUserName,
+				"creator_roll_no":   creatorRollNo,
+			},
+		).Error(err)
+		return nil, err
+	}
+
+	// convert the locks to service locks
+	locks := make([]FluxLock, 0, len(dbLocks))
+	for _, dbLock := range dbLocks {
+		locks = append(locks, dbLockToServiceLock(dbLock))
+	}
+
+	return locks, nil
+}
