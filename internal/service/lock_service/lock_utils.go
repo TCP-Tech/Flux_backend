@@ -1,12 +1,14 @@
 package lock_service
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func validateLock(lock FluxLock) error {
@@ -14,6 +16,46 @@ func validateLock(lock FluxLock) error {
 	err := service.ValidateInput(lock)
 	if err != nil {
 		return err
+	}
+
+	if lock.Type == database.LockTypeTimer {
+		return validateTimerLock(lock)
+	}
+
+	return validateManualLock(lock)
+}
+
+func validateManualLock(lock FluxLock) error {
+	if lock.Timeout != nil {
+		return fmt.Errorf(
+			"%w, manual lock cannot have a timer",
+			flux_errors.ErrInvalidRequest,
+		)
+	}
+
+	if lock.Locked == nil {
+		return fmt.Errorf(
+			"%w, manual lock must not have locked field as null",
+			flux_errors.ErrInvalidRequest,
+		)
+	}
+
+	return nil
+}
+
+func validateTimerLock(lock FluxLock) error {
+	if lock.Locked != nil {
+		return fmt.Errorf(
+			"%w, timer lock must have locked filed as null",
+			flux_errors.ErrInvalidRequest,
+		)
+	}
+
+	if lock.Timeout == nil {
+		return fmt.Errorf(
+			"%w, timer lock must not have timeout as null. Try to check the format of the timout",
+			flux_errors.ErrInvalidRequest,
+		)
 	}
 
 	// validate format
@@ -25,7 +67,7 @@ func validateLock(lock FluxLock) error {
 	}
 
 	// validate expiry
-	if time.Now().Add(time.Minute * 5).After(lock.Timeout) {
+	if time.Now().Add(time.Minute * 5).After(*lock.Timeout) {
 		return fmt.Errorf(
 			"%w, lock's expiry must be atleast 5 minutes from now",
 			flux_errors.ErrInvalidRequest,
@@ -33,15 +75,58 @@ func validateLock(lock FluxLock) error {
 	}
 
 	return nil
+
 }
 
 func dbLockToServiceLock(dbLock database.Lock) FluxLock {
+	var timeout *time.Time
+	if dbLock.Timeout.Valid {
+		timeout = &dbLock.Timeout.Time
+	}
+	var locked *bool
+	if dbLock.Locked.Valid {
+		locked = &dbLock.Locked.Bool
+	}
 	return FluxLock{
-		Timeout:     dbLock.Timeout,
+		Timeout:     timeout,
 		CreatedBy:   dbLock.CreatedBy,
 		CreatedAt:   dbLock.CreatedAt,
 		Name:        dbLock.Name,
 		ID:          dbLock.ID,
 		Description: dbLock.Description,
+		Locked:      locked,
+		Type:        dbLock.LockType,
+		Access:      user_service.UserRole(dbLock.Access),
 	}
+}
+
+func getNullTimeAndNullBool(lock FluxLock) (sql.NullTime, sql.NullBool) {
+	var timeout sql.NullTime
+	var locked sql.NullBool
+
+	if lock.Timeout != nil {
+		timeout.Valid = true
+		timeout.Time = *lock.Timeout
+	} else {
+		locked.Valid = true
+		locked.Bool = *lock.Locked
+	}
+
+	return timeout, locked
+}
+
+func (l *LockService) IsLockExpired(
+	lock FluxLock,
+	delayMinutes int32,
+) bool {
+	if lock.Type == database.LockTypeManual {
+		return false
+	}
+
+	if time.Now().Add(
+		time.Minute * time.Duration(delayMinutes)).After(*lock.Timeout) {
+		return true
+	}
+
+	return false
 }

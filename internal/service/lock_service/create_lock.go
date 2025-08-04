@@ -38,16 +38,18 @@ func (l *LockService) CreateLock(
 		return
 	}
 
+	timeout, locked := getNullTimeAndNullBool(lock)
+
 	// create a lock
 	dbLock, err := l.DB.CreateLock(ctx, database.CreateLockParams{
-		Timeout:     lock.Timeout,
+		Timeout:     timeout,
+		LockType:    lock.Type,
+		Locked:      locked,
 		Name:        lock.Name,
 		CreatedBy:   user.ID,
 		Description: lock.Description,
 	})
 	if err != nil {
-		// currently error cannot occur from client side
-		// while inserting lock in db
 		err = fmt.Errorf(
 			"%w, cannot create lock, %w",
 			flux_errors.ErrInternal,

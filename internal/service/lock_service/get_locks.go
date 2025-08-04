@@ -23,21 +23,7 @@ func (l *LockService) GetLockById(
 		return
 	}
 
-	// authorize
-	err = l.UserServiceConfig.AuthorizeUserRole(
-		ctx,
-		user.ID,
-		user_service.RoleManager,
-		fmt.Sprintf(
-			"user %s tried to view lock with id %v",
-			user.ID,
-			id,
-		),
-	)
-	if err != nil {
-		return
-	}
-
+	// get lock from db
 	dbLock, err := l.DB.GetLockById(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -57,6 +43,21 @@ func (l *LockService) GetLockById(
 		return
 	}
 
+	// authorize
+	err = l.UserServiceConfig.AuthorizeUserRole(
+		ctx,
+		user.ID,
+		user_service.UserRole(dbLock.Access),
+		fmt.Sprintf(
+			"user %s tried to view lock with id %v",
+			user.UserName,
+			id,
+		),
+	)
+	if err != nil {
+		return
+	}
+
 	return dbLockToServiceLock(dbLock), nil
 }
 
@@ -73,6 +74,7 @@ func (l *LockService) GetLocksByFilters(
 	}
 
 	// authorize
+	// only manager or above can view locks
 	err = l.UserServiceConfig.AuthorizeUserRole(
 		ctx,
 		user.ID,
@@ -128,7 +130,15 @@ func (l *LockService) GetLocksByFilters(
 	// convert the locks to service locks
 	locks := make([]FluxLock, 0, len(dbLocks))
 	for _, dbLock := range dbLocks {
-		locks = append(locks, dbLockToServiceLock(dbLock))
+		err = l.UserServiceConfig.AuthorizeUserRole(
+			ctx,
+			user.ID,
+			user_service.UserRole(dbLock.Access),
+			"",
+		)
+		if err == nil {
+			locks = append(locks, dbLockToServiceLock(dbLock))
+		}
 	}
 
 	return locks, nil

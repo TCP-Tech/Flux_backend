@@ -14,10 +14,13 @@ type LockService struct {
 }
 
 type FluxLock struct {
-	ID          uuid.UUID `json:"lock_id"`
-	Name        string    `json:"name" validate:"min=4"`
-	CreatedBy   uuid.UUID `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
-	Timeout     time.Time `json:"timeout"`
-	Description string    `json:"description"`
+	ID          uuid.UUID             `json:"lock_id"`
+	Name        string                `json:"name" validate:"min=4"`
+	CreatedBy   uuid.UUID             `json:"created_by"`
+	Type        database.LockType     `json:"lock_type" validate:"oneof=timer manual"`
+	Locked      *bool                 `json:"locked"`
+	CreatedAt   time.Time             `json:"created_at"`
+	Timeout     *time.Time            `json:"timeout"`
+	Description string                `json:"description"`
+	Access      user_service.UserRole `json:"-"`
 }

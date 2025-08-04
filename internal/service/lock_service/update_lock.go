@@ -40,8 +40,17 @@ func (l *LockService) UpdateLock(
 		return
 	}
 
+	if previousLock.Type != lock.Type {
+		err = fmt.Errorf(
+			"%w, cannot change type of a lock",
+			flux_errors.ErrInvalidRequest,
+		)
+		return
+	}
+
 	// check expiry of previous lock
-	if time.Now().After(previousLock.Timeout) {
+	if previousLock.Type == database.LockTypeTimer &&
+		time.Now().After(*previousLock.Timeout) {
 		err = fmt.Errorf(
 			"%w, lock is already expired, create a new one",
 			flux_errors.ErrInvalidRequest,
@@ -55,11 +64,14 @@ func (l *LockService) UpdateLock(
 		return
 	}
 
+	timeout, locked := getNullTimeAndNullBool(lock)
+
 	// update the lock
 	dbLock, err := l.DB.UpdateLockDetails(
 		ctx,
 		database.UpdateLockDetailsParams{
-			Timeout:     lock.Timeout,
+			Timeout:     timeout,
+			Locked:      locked,
 			Description: lock.Description,
 			Name:        lock.Name,
 			ID:          lock.ID,
