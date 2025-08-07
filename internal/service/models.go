@@ -1,9 +1,12 @@
 package service
 
-import "github.com/golang-jwt/jwt/v4"
+import (
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
+)
 
 type UserCredentialClaims struct {
-	UserName string `json:"user_name"`
-	RollNo   string `json:"roll_no"`
+	UserId   uuid.UUID `json:"user_id"`
+	UserName string    `json:"user_name"`
 	jwt.RegisteredClaims
 }

@@ -5,14 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
-	"github.com/tcp_snm/flux/internal/service"
 )
 
 func (u *UserService) FetchUserFromDb(
@@ -68,21 +66,30 @@ func (u *UserService) FetchUserByRollNo(
 
 // extract user roles
 func (u *UserService) FetchUserRoles(ctx context.Context, userId uuid.UUID) ([]string, error) {
+	// try to get roles from cache
+	roles, ok := u.rolesCache.Get(userId)
+	if ok {
+		log.Debugf("rolesCache hit for user %v", userId)
+		return roles, nil
+	}
+
+	// get from db
+	log.Debugf("roleCache miss for user %s", userId)
 	userRoles, err := u.DB.GetUserRolesByUserName(ctx, userId)
-	roles := make([]string, 1)
+	roles = make([]string, 1)
 	roles[0] = "User"
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return roles, nil
-		}
 		log.Errorf("error fetching roles for user %s, %v", userId, err)
 		return nil, flux_errors.ErrInternal
 	}
+	// convert to string
 	for _, userRole := range userRoles {
 		roles = append(roles, userRole.RoleName)
 	}
 
+	evicted := u.rolesCache.Add(userId, roles)
+	log.Debugf("added roles of %v to cache, evicted: %v", userId, evicted)
 	return roles, nil
 }
 
@@ -91,7 +98,7 @@ func (u *UserService) AuthorizeUserRole(
 	userId uuid.UUID,
 	role UserRole,
 	warnMessage string,
-) error {
+) (err error) {
 	roles, err := u.FetchUserRoles(ctx, userId)
 	if err != nil {
 		return err
@@ -103,22 +110,6 @@ func (u *UserService) AuthorizeUserRole(
 		log.Warn(warnMessage)
 	}
 	return flux_errors.ErrUnAuthorized
-}
-
-func (u *UserService) FetchUserFromClaims(ctx context.Context) (user database.User, err error) {
-	claimsValue := ctx.Value(service.KeyCtxUserCredClaims)
-	claims, ok := claimsValue.(service.UserCredentialClaims)
-	if !ok {
-		err = fmt.Errorf(
-			"%w, unable to parse claims to auth_service.UserCredentialClaims, type of claims found is %T",
-			flux_errors.ErrInternal,
-			reflect.TypeOf(claims),
-		)
-		return
-	}
-	// fetch user from db
-	user, err = u.FetchUserFromDb(ctx, claims.UserName, claims.RollNo)
-	return
 }
 
 func (u *UserService) AuthorizeCreatorAccess(

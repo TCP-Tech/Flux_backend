@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/email"
@@ -117,13 +117,13 @@ func (a *AuthService) createUserInDB(
 				},
 			)
 			if dbErr != nil {
-				var pqErr *pq.Error
-				if errors.As(dbErr, &pqErr) && pqErr.Code == flux_errors.CodeUniqueConstraintViolation {
-					if strings.Contains(pqErr.Constraint, "user_name") {
+				var pgErr *pgconn.PgError
+				if errors.As(dbErr, &pgErr) && pgErr.Code == flux_errors.CodeUniqueConstraintViolation {
+					if strings.Contains(pgErr.ConstraintName, "user_name") {
 						attemptLogger.Errorf("cannot create user. user_name %s already exist", userName)
 						continue
 					}
-					return database.User{}, fmt.Errorf("%s %w", pqErr.Detail, flux_errors.ErrUserAlreadyExists)
+					return database.User{}, fmt.Errorf("%s %w", pgErr.Detail, flux_errors.ErrUserAlreadyExists)
 				}
 				attemptLogger.Errorf("failed to insert user into database: %v", dbErr)
 				return database.User{}, errors.Join(flux_errors.ErrInternal, dbErr)

@@ -1,17 +1,21 @@
 package problem_service
 
 import (
-	"database/sql"
+	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
 	"github.com/tcp_snm/flux/internal/database"
+	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
+
+type Platform string
 
 type ProblemService struct {
 	DB                *database.Queries
 	UserServiceConfig *user_service.UserService
+	LockServiceConfig *lock_service.LockService
 }
 
 type ExampleTestCase struct {
@@ -36,16 +40,43 @@ type Problem struct {
 	TimeLimitMS    int32             `json:"time_limit_ms" validate:"required,numeric"`
 	Difficulty     int32             `json:"difficulty" validate:"required,numeric,min=800,max=3000"`
 	SubmissionLink *string           `json:"submission_link" valdidate:"url"`
-	Platform       *string           `json:"platform"`
+	Platform       *Platform         `json:"platform" validate:"omitempty,oneof=codeforces"`
 	CreatedBy      uuid.UUID         `json:"created_by"`
 	LastUpdatedBy  uuid.UUID         `json:"last_updated_by"`
-	LockId         uuid.NullUUID     `json:"lock_id"`
+	LockId         *uuid.UUID        `json:"lock_id"`
 }
 
-type DBProblemData struct {
-	exampleTestCases pqtype.NullRawMessage
-	notes            sql.NullString
-	submissionLink   sql.NullString
-	platform         database.NullPlatformType
-	lockId           uuid.NullUUID
+// helper struct for converting service problem data to db problem data
+type dbProblemData struct {
+	exampleTestCases *json.RawMessage
+	platformType     database.NullPlatform
+}
+
+// helper struct for converting db problem data to service problem data
+type serviceProblemData struct {
+	exampleTestCases *ExampleTestCases
+	platformType     *Platform
+}
+
+// dto for requesting problems with fitlers
+type GetProblemsRequest struct {
+	// title substring that might be in problem title
+	Title string `json:"title"`
+	// page number
+	PageNumber int32 `json:"page_number" validate:"numeric,min=1"`
+	// size of each page
+	PageSize int32 `json:"page_size" validate:"numeric,min=1,max=100"`
+	// filter for the problem created
+	CreatorUserName string `json:"creator_user_name"`
+	CreatorRollNo   string `json:"creator_roll_number"`
+}
+
+// dto problems are requested based on filters
+type ProblemMetaData struct {
+	ProblemId  int32     `json:"problem_id"`
+	Title      string    `json:"title"`
+	Difficulty int32     `json:"difficulty"`
+	Platform   *Platform `json:"platform"`
+	CreatedBy  uuid.UUID `json:"created_by"`
+	CreatedAt  time.Time `json:"created_at"`
 }

@@ -5,103 +5,175 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func (p *ProblemService) GetProblemById(
 	ctx context.Context,
-	problem_id int32,
-) (problem Problem, err error) {
-	// fetch problem from db
-	dbProblem, err := p.DB.GetProblemById(ctx, problem_id)
+	id int32,
+) (Problem, error) {
+	// get claims
+	claims, err := service.GetClaimsFromContext(ctx)
+	if err != nil {
+		return Problem{}, err
+	}
+
+	// get the problem from db
+	dbProblem, err := p.DB.GetProblemById(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, problem with id %v not found", flux_errors.ErrNotFound, problem_id)
-			return
+			return Problem{}, fmt.Errorf(
+				"%w, no problem exist with the given id",
+				flux_errors.ErrNotFound,
+			)
 		}
-		err = fmt.Errorf("%w, failed to fetch problem with id %v, %w", flux_errors.ErrInternal, problem_id, err)
-		log.Error(err)
-		return
+		return Problem{}, fmt.Errorf(
+			"%w, cannot fetch problem with id %v, %w",
+			flux_errors.ErrInternal,
+			id,
+			err,
+		)
 	}
-	problem, err = dbProblemToServiceProblem(dbProblem)
-	return
+
+	// authorize
+	if dbProblem.Access != nil {
+		access := user_service.UserRole(*dbProblem.Access)
+		accessErr := p.UserServiceConfig.AuthorizeUserRole(
+			ctx,
+			claims.UserId,
+			access,
+			fmt.Sprintf(
+				"user %s tried to access unauthorized problem with id %v",
+				claims.UserName,
+				id,
+			),
+		)
+		if accessErr != nil {
+			return Problem{}, fmt.Errorf(
+				"%w, no problem exist with the given id",
+				flux_errors.ErrNotFound,
+			)
+		}
+	}
+
+	serviceProbData, err := getServiceProblemData(
+		dbProblem.ExampleTestcases,
+		dbProblem.Platform,
+	)
+	if err != nil {
+		return Problem{}, err
+	}
+
+	return Problem{
+		ID:             dbProblem.ID,
+		Title:          dbProblem.Title,
+		Statement:      dbProblem.Statement,
+		InputFormat:    dbProblem.InputFormat,
+		OutputFormat:   dbProblem.OutputFormat,
+		Notes:          dbProblem.Notes,
+		MemoryLimitKB:  dbProblem.MemoryLimitKb,
+		TimeLimitMS:    dbProblem.TimeLimitMs,
+		Difficulty:     dbProblem.Difficulty,
+		SubmissionLink: dbProblem.SubmissionLink,
+		CreatedBy:      dbProblem.CreatedBy,
+		LastUpdatedBy:  dbProblem.LastUpdatedBy,
+		ExampleTCs:     serviceProbData.exampleTestCases,
+		Platform:       serviceProbData.platformType,
+		LockId:         dbProblem.LockID,
+	}, nil
 }
 
-func (p *ProblemService) ListProblemsWithPagination(
+func (p *ProblemService) GetProblemsByFilters(
 	ctx context.Context,
-	pageStr string,
-	pageSizeStr string,
-	title string,
-	creatorUserName string,
-	creatorRollNo string,
-) ([]Problem, error) {
-	// Set a default page size and a maximum limit
-	var pageSize int32 = 10
-	if pageSizeStr != "" {
-		parsedSize, err := strconv.Atoi(pageSizeStr)
-		if err == nil && parsedSize > 0 {
-			pageSize = int32(parsedSize)
-		} else {
-			err = fmt.Errorf("%w, page_size must be a valid integer", flux_errors.ErrInvalidRequest)
-			return nil, err
-		}
-	} else {
-		log.Error("pageSize size is not provided, default set to 10")
+	request GetProblemsRequest,
+) ([]ProblemMetaData, error) {
+	// validate
+	valErr := service.ValidateInput(request)
+	if valErr != nil {
+		return nil, valErr
 	}
 
-	// Set a default page number and validate it
-	var page int32 = 1
-	if pageStr != "" {
-		parsedPage, err := strconv.Atoi(pageStr)
-		if err == nil && parsedPage > 0 {
-			page = int32(parsedPage)
-		} else {
-			err = fmt.Errorf("%w, page number must be a valid integer", flux_errors.ErrInvalidRequest)
-			return nil, err
-		}
-	} else {
-		log.Error("page number is not provided, default set to 1")
-	}
+	// calculate offset
+	offset := (request.PageNumber - 1) * request.PageSize
 
-	// filter for created_by or last_updated_by
-	var created_by uuid.UUID
-	if creatorUserName != "" || creatorRollNo != "" {
-		user, err := p.UserServiceConfig.FetchUserFromDb(ctx, creatorUserName, creatorRollNo)
+	// get creator
+	var createdBy *uuid.UUID
+	if request.CreatorRollNo != "" || request.CreatorUserName != "" {
+		user, err := p.UserServiceConfig.FetchUserFromDb(ctx, request.CreatorUserName, request.CreatorRollNo)
 		if err != nil {
 			return nil, err
 		}
-		created_by = user.ID
+		createdBy = &user.ID
 	}
 
-	// calculate offset from pageNumber
-	offset := (page - 1) * pageSize
+	// fetch problems from db
+	rows, fetchErr := p.DB.GetProblemsByFilters(
+		ctx, database.GetProblemsByFiltersParams{
+			Title:     fmt.Sprintf("%%%s%%", request.Title),
+			Offset:    offset,
+			Limit:     request.PageSize,
+			CreatedBy: createdBy,
+		})
+	if fetchErr != nil {
+		err := fmt.Errorf(
+			"%w, cannot fetch problems with filters from db, %w",
+			flux_errors.ErrInternal,
+			fetchErr,
+		)
+		log.WithField("filters", request).Error(err)
+		return nil, err
+	}
+	log.Info(rows)
 
-	// fetch the problems from db
-	dbProblems, err := p.DB.ListProblemsWithPagination(
-		ctx,
-		database.ListProblemsWithPaginationParams{
-			Limit:  pageSize,
-			Offset: offset,
-			Title:     title,
-			Column2: created_by,
-		},
-	)
+	// fetch claims to access userID
+	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
-		err = fmt.Errorf("%w, unable to fetch problem with given filters, %w", flux_errors.ErrInternal, err)
-		log.WithFields(log.Fields{
-			"page":     page,
-			"pageSize": pageSize,
-			"title":    title,
-		}).Error(err)
 		return nil, err
 	}
 
-	// convert to service problems
-	problems, err := dbProblemsToServiceProblems(dbProblems)
-	return problems, err
+	// convert to meta data
+	problemsMetaData := make([]ProblemMetaData, 0, len(rows))
+	for _, row := range rows {
+		// authorize user for the problem
+		// only a handful of people are assigned roles and
+		// once fetched they are stored in cache, so better loop and authorize
+		// instead of filtering them in the complex sql query
+		if row.LockAccess != nil {
+			accessErr := p.UserServiceConfig.AuthorizeUserRole(
+				ctx,
+				claims.UserId,
+				user_service.UserRole(*row.LockAccess),
+				"",
+			)
+			if accessErr != nil {
+				continue
+			}
+		}
+
+		// convert platform
+		var platform *Platform
+		if row.Platform.Valid {
+			plt := Platform(row.Platform.Platform)
+			platform = &plt
+		}
+
+		// append problem
+		pmd := ProblemMetaData{
+			ProblemId:  row.ID,
+			Title:      row.Title,
+			Difficulty: row.Difficulty,
+			Platform:   platform,
+			CreatedBy:  row.CreatedBy,
+			CreatedAt:  row.CreatedAt,
+		}
+		problemsMetaData = append(problemsMetaData, pmd)
+	}
+
+	return problemsMetaData, nil
 }

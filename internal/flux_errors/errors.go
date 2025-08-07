@@ -6,6 +6,7 @@ import (
 
 const (
 	CodeUniqueConstraintViolation = "23505"
+	CodeForeignKeyConstraint = "23503"
 )
 
 var (

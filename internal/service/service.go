@@ -1,12 +1,15 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
+	"github.com/tcp_snm/flux/internal/flux_errors"
 )
 
 type contextKey string
@@ -45,4 +48,20 @@ func initValidator() *validator.Validate {
 	})
 
 	return validate
+}
+
+func GetClaimsFromContext(
+	ctx context.Context,
+) (claims UserCredentialClaims, err error) {
+	claimsValue := ctx.Value(KeyCtxUserCredClaims)
+	claims, ok := claimsValue.(UserCredentialClaims)
+	if !ok {
+		err = fmt.Errorf(
+			"%w, unable to parse claims to auth_service.UserCredentialClaims, type of claims found is %T",
+			flux_errors.ErrInternal,
+			reflect.TypeOf(claims),
+		)
+		log.Error(err)
+	}
+	return
 }

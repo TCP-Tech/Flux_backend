@@ -32,7 +32,7 @@ type AddProblemToContestParams struct {
 }
 
 func (q *Queries) AddProblemToContest(ctx context.Context, arg AddProblemToContestParams) (ContestProblem, error) {
-	row := q.db.QueryRowContext(ctx, addProblemToContest, arg.ContestID, arg.ProblemID, arg.Score)
+	row := q.db.QueryRow(ctx, addProblemToContest, arg.ContestID, arg.ProblemID, arg.Score)
 	var i ContestProblem
 	err := row.Scan(&i.ContestID, &i.ProblemID, &i.Score)
 	return i, err
@@ -55,7 +55,7 @@ type AddUserToContestParams struct {
 }
 
 func (q *Queries) AddUserToContest(ctx context.Context, arg AddUserToContestParams) (ContestRegisteredUser, error) {
-	row := q.db.QueryRowContext(ctx, addUserToContest, arg.UserID, arg.ContestID)
+	row := q.db.QueryRow(ctx, addUserToContest, arg.UserID, arg.ContestID)
 	var i ContestRegisteredUser
 	err := row.Scan(&i.UserID, &i.ContestID)
 	return i, err
@@ -87,7 +87,7 @@ type CreateContestParams struct {
 }
 
 func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (Contest, error) {
-	row := q.db.QueryRowContext(ctx, createContest,
+	row := q.db.QueryRow(ctx, createContest,
 		arg.Title,
 		arg.CreatedBy,
 		arg.StartTime,
@@ -114,7 +114,7 @@ DELETE FROM contest_problems WHERE contest_id = $1
 `
 
 func (q *Queries) DeleteProblemsByContestId(ctx context.Context, contestID uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, deleteProblemsByContestId, contestID)
+	_, err := q.db.Exec(ctx, deleteProblemsByContestId, contestID)
 	return err
 }
 
@@ -123,6 +123,6 @@ DELETE FROM contest_registered_users WHERE contest_id = $1
 `
 
 func (q *Queries) DeleteUsersByContestId(ctx context.Context, contestID uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, deleteUsersByContestId, contestID)
+	_, err := q.db.Exec(ctx, deleteUsersByContestId, contestID)
 	return err
 }

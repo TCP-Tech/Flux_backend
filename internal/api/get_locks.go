@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service/lock_service"
 )
 
 func (a *Api) HandlerGetLocksByFilter(w http.ResponseWriter, r *http.Request) {
@@ -29,12 +30,16 @@ func (a *Api) HandlerGetLocksByFilter(w http.ResponseWriter, r *http.Request) {
 	creatorUserName := r.URL.Query().Get("creator_user_name")
 	creatorRollNo := r.URL.Query().Get("creator_roll_no")
 
+	request := lock_service.GetLocksRequest{
+		LockName: lockName,
+		CreatorUserName: creatorUserName,
+		CreatorRollNo: creatorRollNo,
+	}
+
 	// get locks using service
 	locks, err := a.LockServiceConfig.GetLocksByFilters(
 		r.Context(),
-		lockName,
-		creatorUserName,
-		creatorRollNo,
+		request,
 	)
 	if err != nil {
 		handlerError(err, w)

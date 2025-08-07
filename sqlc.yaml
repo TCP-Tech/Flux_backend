@@ -1,13 +1,40 @@
 version: "2"
-
 sql:
   - schema: "sql/schema"
     queries: "sql/queries"
     engine: "postgresql"
     gen:
       go:
+        sql_package: "pgx/v5"
         out: "internal/database"
+        emit_pointers_for_null_types: true
         emit_json_tags: true
         overrides:
-          - db_type: "platform_type"
-            go_type: "string"
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
+            nullable: true
+          - db_type: "pg_catalog.timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - db_type: "pg_catalog.timestamptz"
+            go_type: "time.Time"
+          - db_type: "jsonb"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+          - db_type: "jsonb"
+            nullable: true
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true

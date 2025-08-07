@@ -2,15 +2,12 @@ package problem_service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	log "github.com/sirupsen/logrus"
-	"github.com/sqlc-dev/pqtype"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
@@ -32,10 +29,16 @@ func (p *ProblemService) validateProblem(
 	if problem.ExampleTCs != nil {
 		if problem.ExampleTCs.NumTestCases != nil {
 			if *problem.ExampleTCs.NumTestCases != len(problem.ExampleTCs.Examples) {
-				return fmt.Errorf("%w, num_test_cases != number of example test cases provided", flux_errors.ErrInvalidRequest)
+				return fmt.Errorf(
+					"%w, num_test_cases != number of example test cases provided",
+					flux_errors.ErrInvalidRequest,
+				)
 			}
 		} else if len(problem.ExampleTCs.Examples) > 1 {
-			return fmt.Errorf("%w, num_test_cases is nil but number of example test cases are plural", flux_errors.ErrInvalidRequest)
+			return fmt.Errorf(
+				"%w, num_test_cases is nil but number of example test cases are plural",
+				flux_errors.ErrInvalidRequest,
+			)
 		}
 	}
 
@@ -44,13 +47,13 @@ func (p *ProblemService) validateProblem(
 		if problem.SubmissionLink == nil {
 			return fmt.Errorf("%w, platform is provided but submission link is not provided", flux_errors.ErrInvalidRequest)
 		}
-		_, err = p.DB.CheckPlatformType(ctx, *problem.Platform)
+		_, err = p.DB.CheckPlatformType(ctx, database.Platform(*problem.Platform))
 		if err != nil {
-			var pqErr *pq.Error
-			if errors.As(err, &pqErr) {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) {
 				// code for invalid input value
-				if pqErr.Code == "22P02" {
-					log.Error(pqErr)
+				if pgErr.Code == "22P02" {
+					log.Error(pgErr)
 					return fmt.Errorf("%w, invalid platform type provided", flux_errors.ErrInvalidRequest)
 				}
 			}
@@ -62,182 +65,103 @@ func (p *ProblemService) validateProblem(
 		return fmt.Errorf("%w, submission link is provided but platform is not provided", flux_errors.ErrInvalidRequest)
 	}
 
-	// validate lock
-	// if problem.LockId.Valid {
-	// 	dbLock, err := p.GetLockById(ctx, problem.LockId.UUID)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	err = validateLock(dbLock)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
+	// lock has different validations for different purposes
 
 	return nil
 }
 
-// It marshals example test cases, handles nullable fields, and
-// maps the Problem struct to AddProblemParams.
-func getDBProblemDataFromProblem(problem Problem) (DBProblemData, error) {
-	var exampleTestCases pqtype.NullRawMessage
+// getDBProblemDataFromProblem converts a service Problem struct to a database DBProblemData.
+// The nullable fields are correctly prepared here.
+func getDBProblemDataFromProblem(problem Problem) (dbProblemData, error) {
+	var exampleTestCases *json.RawMessage
 	if problem.ExampleTCs != nil {
-		data, err := json.Marshal(problem.ExampleTCs)
-		if err != nil {
-			err = fmt.Errorf("%w, unable to marshal %v, %w", flux_errors.ErrInternal, problem.ExampleTCs, err)
-			log.Error(err)
-			return DBProblemData{}, err
-		}
-		exampleTestCases.RawMessage = json.RawMessage(data)
-		exampleTestCases.Valid = true
-	}
-
-	// Prepare notes as a nullable string
-	var notes sql.NullString
-	if problem.Notes != nil {
-		notes.Valid = true
-		notes.String = *problem.Notes
-	}
-
-	// Prepare submission link as a nullable string
-	var submissionLink sql.NullString
-	if problem.SubmissionLink != nil {
-		submissionLink.Valid = true
-		submissionLink.String = *problem.SubmissionLink
-	}
-
-	// Prepare platform as a nullable platform type
-	var platform database.NullPlatformType
-	if problem.Platform != nil {
-		platform.Valid = true
-		platform.PlatformType = database.PlatformType(*problem.Platform)
-	}
-
-	// var lockId uuid.NullUUID
-	// if problem.LockId != uuid.Nil {
-
-	// }
-
-	return DBProblemData{
-		exampleTestCases: exampleTestCases,
-		notes:            notes,
-		submissionLink:   submissionLink,
-		platform:         platform,
-	}, nil
-}
-
-// getDatabaseProblemParams prepares the parameters for adding a problem to the database.
-func getAddProblemParams(userId uuid.UUID, problem Problem) (database.AddProblemParams, error) {
-	dbProblemData, err := getDBProblemDataFromProblem(problem)
-	if err != nil {
-		return database.AddProblemParams{}, err
-	}
-
-	// Map fields to AddProblemParams
-	return database.AddProblemParams{
-		Title:            problem.Title,
-		Statement:        problem.Statement,
-		InputFormat:      problem.InputFormat,
-		OutputFormat:     problem.OutputFormat,
-		ExampleTestcases: dbProblemData.exampleTestCases, // Note: Typo in field name, should be ExampleTestcases if that's the intended field
-		Notes:            dbProblemData.notes,
-		MemoryLimitKb:    problem.MemoryLimitKB,
-		TimeLimitMs:      problem.TimeLimitMS,
-		CreatedBy:        userId,
-		Difficulty:       problem.Difficulty,
-		SubmissionLink:   dbProblemData.submissionLink,
-		Platform:         dbProblemData.platform,
-		LockID:           problem.LockId,
-	}, nil
-}
-
-func getUpdateProblemParams(userId uuid.UUID, problemId int32, problem Problem) (database.UpdateProblemParams, error) {
-	dbProblemData, err := getDBProblemDataFromProblem(problem)
-	if err != nil {
-		return database.UpdateProblemParams{}, err
-	}
-
-	// Map fields to AddProblemParams
-	return database.UpdateProblemParams{
-		Title:            problem.Title,
-		Statement:        problem.Statement,
-		InputFormat:      problem.InputFormat,
-		OutputFormat:     problem.OutputFormat,
-		ExampleTestcases: dbProblemData.exampleTestCases, // Note: Typo in field name, should be ExampleTestcases if that's the intended field
-		Notes:            dbProblemData.notes,
-		MemoryLimitKb:    problem.MemoryLimitKB,
-		TimeLimitMs:      problem.TimeLimitMS,
-		LastUpdatedBy:    userId,
-		Difficulty:       problem.Difficulty,
-		SubmissionLink:   dbProblemData.submissionLink,
-		Platform:         dbProblemData.platform,
-		ID:               problemId,
-	}, nil
-}
-
-func dbProblemToServiceProblem(dbProblem database.Problem) (problem Problem, err error) {
-	// extract exampleTestCases
-	var exampleTestCases ExampleTestCases
-	if dbProblem.ExampleTestcases.Valid {
-		// unmarshal the data
-		err = json.Unmarshal(
-			[]byte(dbProblem.ExampleTestcases.RawMessage),
-			&exampleTestCases,
-		)
-		if err != nil {
-			err = fmt.Errorf(
-				"%w, unable to unmarshal example testcases of problem with id %d, %w",
+		bytes, marsErr := json.Marshal(*problem.ExampleTCs)
+		if marsErr != nil {
+			err := fmt.Errorf(
+				"%w, cannot marshal %v, %w",
 				flux_errors.ErrInternal,
-				problem.ID,
-				err,
+				problem.ExampleTCs,
+				marsErr,
 			)
 			log.Error(err)
-			return
+			return dbProblemData{}, err
 		}
+		rawMessage := json.RawMessage(bytes)
+		exampleTestCases = &rawMessage
 	}
 
-	var notes string
-	if dbProblem.Notes.Valid {
-		notes = dbProblem.Notes.String
+	var platformType database.NullPlatform
+	if problem.Platform != nil {
+		platformType.Valid = true
+		platformType.Platform = database.Platform(*problem.Platform)
 	}
 
-	var submissionLink string
-	if dbProblem.SubmissionLink.Valid {
-		submissionLink = dbProblem.SubmissionLink.String
+	return dbProblemData{
+		exampleTestCases: exampleTestCases,
+		platformType:     platformType,
+	}, nil
+}
+
+func getServiceProblemData(
+	exampleTestCasesJson *json.RawMessage,
+	dbPlatformType database.NullPlatform,
+) (serviceProblemData, error) {
+	// unmarshal
+	var exampleTestCases *ExampleTestCases
+	if exampleTestCasesJson != nil {
+		var etcs ExampleTestCases
+		marsErr := json.Unmarshal([]byte(*exampleTestCasesJson), &etcs)
+		if marsErr != nil {
+			err := fmt.Errorf(
+				"%w, cannot unamrshal %v, %w",
+				flux_errors.ErrInternal,
+				exampleTestCasesJson,
+				marsErr,
+			)
+			log.Error(err)
+			return serviceProblemData{}, err
+		}
+		exampleTestCases = &etcs
 	}
 
-	var platform string
-	if dbProblem.Platform.Valid {
-		platform = string(dbProblem.Platform.PlatformType)
+	var platformType *Platform
+	if dbPlatformType.Valid {
+		pt := Platform(dbPlatformType.Platform)
+		platformType = &pt
 	}
+
+	return serviceProblemData{
+		exampleTestCases: exampleTestCases,
+		platformType:     platformType,
+	}, nil
+}
+
+func dbProblemToServiceProblem(
+	dbProblem database.Problem,
+) (Problem, error) {
+	serviceProbData, err := getServiceProblemData(
+		dbProblem.ExampleTestcases,
+		dbProblem.Platform,
+	)
+	if err != nil {
+		return Problem{}, err
+	}
+
 	return Problem{
 		ID:             dbProblem.ID,
 		Title:          dbProblem.Title,
 		Statement:      dbProblem.Statement,
 		InputFormat:    dbProblem.InputFormat,
 		OutputFormat:   dbProblem.OutputFormat,
-		ExampleTCs:     &exampleTestCases,
-		Notes:          &notes,
+		Notes:          dbProblem.Notes,
 		MemoryLimitKB:  dbProblem.MemoryLimitKb,
 		TimeLimitMS:    dbProblem.TimeLimitMs,
 		Difficulty:     dbProblem.Difficulty,
-		SubmissionLink: &submissionLink,
-		Platform:       &platform,
+		SubmissionLink: dbProblem.SubmissionLink,
 		CreatedBy:      dbProblem.CreatedBy,
 		LastUpdatedBy:  dbProblem.LastUpdatedBy,
+		ExampleTCs:     serviceProbData.exampleTestCases,
+		Platform:       serviceProbData.platformType,
+		LockId:         dbProblem.LockID,
 	}, nil
-}
-
-func dbProblemsToServiceProblems(dbProblems []database.Problem) ([]Problem, error) {
-	problems := make([]Problem, 0, len(dbProblems))
-	var convErr error = nil
-	for _, dbProblem := range dbProblems {
-		problem, e := dbProblemToServiceProblem(dbProblem)
-		if e != nil {
-			convErr = fmt.Errorf("%w, %w", flux_errors.ErrPartialResult, e)
-			continue
-		}
-		problems = append(problems, problem)
-	}
-	return problems, convErr
 }

@@ -1,10 +1,11 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"net/http"
 	"os"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 	"github.com/tcp_snm/flux/internal/api"
 	"github.com/tcp_snm/flux/internal/database"
@@ -33,22 +34,25 @@ func initDatabase() *database.Queries {
 	}
 
 	// create a conneciton to the database
-	conn, err := sql.Open("postgres", dbURL)
+	pool, err := pgxpool.New(context.Background(), dbURL)
 	if err != nil {
-		log.Fatal(err)
-		panic("cannot create a connection to db with url")
+		panic(err)
 	}
-	log.Info("Connection created to the database")
 
 	// get the query tool with this connection
-	return database.New(conn)
+	return database.New(pool)
 }
 
 func initUserService(db *database.Queries) *user_service.UserService {
 	log.Info("initializing user service")
-	return &user_service.UserService{
+	us := user_service.UserService{
 		DB: db,
 	}
+	err := us.IntializeUserServices()
+	if err != nil {
+		panic(err)
+	}
+	return &us
 }
 
 func initAuthService(db *database.Queries, us *user_service.UserService) *auth_service.AuthService {
@@ -66,11 +70,16 @@ func initLockService(db *database.Queries, us *user_service.UserService) *lock_s
 	}
 }
 
-func initProblemService(db *database.Queries, us *user_service.UserService) *problem_service.ProblemService {
+func initProblemService(
+	db *database.Queries,
+	us *user_service.UserService,
+	ls *lock_service.LockService,
+) *problem_service.ProblemService {
 	log.Info("initializing problem service")
 	return &problem_service.ProblemService{
 		DB:                db,
 		UserServiceConfig: us,
+		LockServiceConfig: ls,
 	}
 }
 
@@ -82,7 +91,7 @@ func initApi(db *database.Queries) *api.Api {
 	log.Info("auth service created")
 	ls := initLockService(db, us)
 	log.Info("lock service created")
-	ps := initProblemService(db, us)
+	ps := initProblemService(db, us, ls)
 	log.Info("problem service created")
 	a := api.Api{
 		AuthServiceConfig:    as,

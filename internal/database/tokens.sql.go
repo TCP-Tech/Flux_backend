@@ -26,7 +26,7 @@ type CreateTokenParams struct {
 }
 
 func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Token, error) {
-	row := q.db.QueryRowContext(ctx, createToken,
+	row := q.db.QueryRow(ctx, createToken,
 		arg.HashedToken,
 		arg.Purpose,
 		arg.Payload,
@@ -56,7 +56,7 @@ type DeleteByEmailAndPurposeParams struct {
 }
 
 func (q *Queries) DeleteByEmailAndPurpose(ctx context.Context, arg DeleteByEmailAndPurposeParams) error {
-	_, err := q.db.ExecContext(ctx, deleteByEmailAndPurpose, arg.Email, arg.Purpose)
+	_, err := q.db.Exec(ctx, deleteByEmailAndPurpose, arg.Email, arg.Purpose)
 	return err
 }
 
@@ -75,7 +75,7 @@ type GetTokenByEmailAndPurposeParams struct {
 
 // helps handle duplicate tokens:
 func (q *Queries) GetTokenByEmailAndPurpose(ctx context.Context, arg GetTokenByEmailAndPurposeParams) (Token, error) {
-	row := q.db.QueryRowContext(ctx, getTokenByEmailAndPurpose, arg.Email, arg.Purpose)
+	row := q.db.QueryRow(ctx, getTokenByEmailAndPurpose, arg.Email, arg.Purpose)
 	var i Token
 	err := row.Scan(
 		&i.ID,

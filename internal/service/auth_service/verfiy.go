@@ -213,7 +213,10 @@ func (a *AuthService) verifyToken(
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, invalid token provided", flux_errors.ErrCorruptedVerification)
+			err = fmt.Errorf(
+				"%w, invalid token or email provided",
+				flux_errors.ErrCorruptedVerification,
+			)
 			return
 		}
 		log.Errorf("unable to retrieve token data from db, %v", err)

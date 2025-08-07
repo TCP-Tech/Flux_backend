@@ -19,22 +19,20 @@ func (a *Api) HandlerAddProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	problem_id, err := a.ProblemServiceConfig.AddProblem(r.Context(), problem)
+	serviceProblem, err := a.ProblemServiceConfig.AddProblem(r.Context(), problem)
 	if err != nil {
 		handlerError(err, w)
 		return
 	}
 
-	response := struct {
-		ProblemId int32 `json:"problem_id"`
-	}{problem_id}
-	response_bytes, err := json.Marshal(response)
+	// marshal
+	response_bytes, err := json.Marshal(serviceProblem)
 	if err != nil {
-		log.Errorf("unable to marshal %v, %v", response, err)
-		respondWithJson(
+		log.Errorf("cannot marshal %v, %v", serviceProblem, err)
+		http.Error(
 			w,
+			"problem added successfully, but there was an error preparing response",
 			http.StatusInternalServerError,
-			[]byte("problem added successfully, but there was an error sending response"),
 		)
 		return
 	}

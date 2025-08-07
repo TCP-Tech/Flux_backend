@@ -19,8 +19,8 @@ func dbUserToUserCredClaims(
 	user database.User,
 ) service.UserCredentialClaims {
 	return service.UserCredentialClaims{
+		UserId:   user.ID,
 		UserName: user.UserName,
-		RollNo:   user.RollNo,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime), // Set the expiration time
 			IssuedAt:  jwt.NewNumericDate(time.Now()),     // When the token was issued
@@ -30,13 +30,13 @@ func dbUserToUserCredClaims(
 	}
 }
 
-func dbUserToLoginRes(expiry time.Time, roles []string, dbUser database.User) UserLoginResponse {
+func dbUserToLoginRes(roles []string, dbUser database.User) UserLoginResponse {
 	return UserLoginResponse{
-		UserName:       dbUser.UserName,
-		RollNo:         dbUser.RollNo,
-		FirstName:      dbUser.FirstName,
-		LastName:       dbUser.LastName,
-		Roles:          roles,
+		UserName:  dbUser.UserName,
+		RollNo:    dbUser.RollNo,
+		FirstName: dbUser.FirstName,
+		LastName:  dbUser.LastName,
+		Roles:     roles,
 	}
 }
 

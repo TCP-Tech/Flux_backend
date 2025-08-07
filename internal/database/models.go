@@ -5,64 +5,104 @@
 package database
 
 import (
-	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
 )
 
-type PlatformType string
+type LockType string
 
 const (
-	PlatformTypeCodeforces PlatformType = "codeforces"
+	LockTypeManual LockType = "manual"
+	LockTypeTimer  LockType = "timer"
 )
 
-func (e *PlatformType) Scan(src interface{}) error {
+func (e *LockType) Scan(src interface{}) error {
 	switch s := src.(type) {
 	case []byte:
-		*e = PlatformType(s)
+		*e = LockType(s)
 	case string:
-		*e = PlatformType(s)
+		*e = LockType(s)
 	default:
-		return fmt.Errorf("unsupported scan type for PlatformType: %T", src)
+		return fmt.Errorf("unsupported scan type for LockType: %T", src)
 	}
 	return nil
 }
 
-type NullPlatformType struct {
-	PlatformType PlatformType `json:"platform_type"`
-	Valid        bool         `json:"valid"` // Valid is true if PlatformType is not NULL
+type NullLockType struct {
+	LockType LockType `json:"lock_type"`
+	Valid    bool     `json:"valid"` // Valid is true if LockType is not NULL
 }
 
 // Scan implements the Scanner interface.
-func (ns *NullPlatformType) Scan(value interface{}) error {
+func (ns *NullLockType) Scan(value interface{}) error {
 	if value == nil {
-		ns.PlatformType, ns.Valid = "", false
+		ns.LockType, ns.Valid = "", false
 		return nil
 	}
 	ns.Valid = true
-	return ns.PlatformType.Scan(value)
+	return ns.LockType.Scan(value)
 }
 
 // Value implements the driver Valuer interface.
-func (ns NullPlatformType) Value() (driver.Value, error) {
+func (ns NullLockType) Value() (driver.Value, error) {
 	if !ns.Valid {
 		return nil, nil
 	}
-	return string(ns.PlatformType), nil
+	return string(ns.LockType), nil
+}
+
+type Platform string
+
+const (
+	PlatformCodeforces Platform = "codeforces"
+)
+
+func (e *Platform) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Platform(s)
+	case string:
+		*e = Platform(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Platform: %T", src)
+	}
+	return nil
+}
+
+type NullPlatform struct {
+	Platform Platform `json:"platform"`
+	Valid    bool     `json:"valid"` // Valid is true if Platform is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPlatform) Scan(value interface{}) error {
+	if value == nil {
+		ns.Platform, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Platform.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPlatform) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Platform), nil
 }
 
 type Bot struct {
-	ID          uuid.UUID             `json:"id"`
-	AccountName string                `json:"account_name"`
-	Platform    string                `json:"platform"`
-	WebsiteData pqtype.NullRawMessage `json:"website_data"`
-	CreatedAt   time.Time             `json:"created_at"`
-	UpdatedAt   time.Time             `json:"updated_at"`
+	ID          uuid.UUID        `json:"id"`
+	AccountName string           `json:"account_name"`
+	Platform    string           `json:"platform"`
+	WebsiteData *json.RawMessage `json:"website_data"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
 }
 
 type Contest struct {
@@ -89,33 +129,34 @@ type ContestRegisteredUser struct {
 }
 
 type Lock struct {
-	ID          uuid.UUID      `json:"id"`
-	Timeout     time.Time      `json:"timeout"`
-	Name        string         `json:"name"`
-	CreatedBy   uuid.UUID      `json:"created_by"`
-	CreatedAt   time.Time      `json:"created_at"`
-	Description string         `json:"description"`
-	Access      sql.NullString `json:"access"`
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Description string     `json:"description"`
+	Access      string     `json:"access"`
+	LockType    LockType   `json:"lock_type"`
+	Timeout     *time.Time `json:"timeout"`
 }
 
 type Problem struct {
-	ID               int32                 `json:"id"`
-	Title            string                `json:"title"`
-	Statement        string                `json:"statement"`
-	InputFormat      string                `json:"input_format"`
-	OutputFormat     string                `json:"output_format"`
-	ExampleTestcases pqtype.NullRawMessage `json:"example_testcases"`
-	Notes            sql.NullString        `json:"notes"`
-	MemoryLimitKb    int32                 `json:"memory_limit_kb"`
-	TimeLimitMs      int32                 `json:"time_limit_ms"`
-	CreatedBy        uuid.UUID             `json:"created_by"`
-	LastUpdatedBy    uuid.UUID             `json:"last_updated_by"`
-	CreatedAt        time.Time             `json:"created_at"`
-	UpdatedAt        time.Time             `json:"updated_at"`
-	Difficulty       int32                 `json:"difficulty"`
-	SubmissionLink   sql.NullString        `json:"submission_link"`
-	Platform         NullPlatformType      `json:"platform"`
-	LockID           uuid.NullUUID         `json:"lock_id"`
+	ID               int32            `json:"id"`
+	Title            string           `json:"title"`
+	Statement        string           `json:"statement"`
+	InputFormat      string           `json:"input_format"`
+	OutputFormat     string           `json:"output_format"`
+	ExampleTestcases *json.RawMessage `json:"example_testcases"`
+	Notes            *string          `json:"notes"`
+	MemoryLimitKb    int32            `json:"memory_limit_kb"`
+	TimeLimitMs      int32            `json:"time_limit_ms"`
+	CreatedBy        uuid.UUID        `json:"created_by"`
+	LastUpdatedBy    uuid.UUID        `json:"last_updated_by"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
+	Difficulty       int32            `json:"difficulty"`
+	SubmissionLink   *string          `json:"submission_link"`
+	Platform         NullPlatform     `json:"platform"`
+	LockID           *uuid.UUID       `json:"lock_id"`
 }
 
 type Role struct {
@@ -129,17 +170,17 @@ type Solved struct {
 }
 
 type Submission struct {
-	ID           uuid.UUID             `json:"id"`
-	BotAccountID uuid.UUID             `json:"bot_account_id"`
-	WebsiteData  pqtype.NullRawMessage `json:"website_data"`
-	SubmittedBy  uuid.UUID             `json:"submitted_by"`
-	ContestID    uuid.NullUUID         `json:"contest_id"`
-	ProblemID    uuid.UUID             `json:"problem_id"`
-	Language     string                `json:"language"`
-	Solution     string                `json:"solution"`
-	Status       sql.NullString        `json:"status"`
-	CreatedAt    time.Time             `json:"created_at"`
-	UpdatedAt    time.Time             `json:"updated_at"`
+	ID           uuid.UUID        `json:"id"`
+	BotAccountID uuid.UUID        `json:"bot_account_id"`
+	WebsiteData  *json.RawMessage `json:"website_data"`
+	SubmittedBy  uuid.UUID        `json:"submitted_by"`
+	ContestID    *uuid.UUID       `json:"contest_id"`
+	ProblemID    uuid.UUID        `json:"problem_id"`
+	Language     string           `json:"language"`
+	Solution     string           `json:"solution"`
+	Status       *string          `json:"status"`
+	CreatedAt    time.Time        `json:"created_at"`
+	UpdatedAt    time.Time        `json:"updated_at"`
 }
 
 type Token struct {

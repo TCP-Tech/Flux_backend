@@ -2,95 +2,200 @@ package problem_service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
-	"github.com/lib/pq"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	log "github.com/sirupsen/logrus"
+	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
+	"github.com/tcp_snm/flux/internal/service/lock_service"
 )
 
 func (p *ProblemService) UpdateProblem(
 	ctx context.Context,
 	problem Problem,
-) (problemResponse Problem, err error) {
-	// get the user details from claims
-	user, err := p.UserServiceConfig.FetchUserFromClaims(ctx)
+) (Problem, error) {
+	// fetch old problem
+	oldProblem, err := p.GetProblemById(
+		ctx,
+		problem.ID,
+	)
 	if err != nil {
-		return
+		return Problem{}, err
 	}
 
-	// fetch the problem from db
-	dbProblem, err := p.DB.GetProblemById(ctx, problem.ID)
+	// fetch claims
+	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, problem with id %v do not exist", flux_errors.ErrNotFound, problem.ID)
-			log.Error(err)
-			return
-		}
-		err = fmt.Errorf("%w, unable to fetch problem with id %v, %w",
-			flux_errors.ErrInternal, problem.ID, err)
-		log.Error(err)
-		return
+		return Problem{}, err
 	}
 
 	// authorize
-	err = p.UserServiceConfig.AuthorizeCreatorAccess(
+	authErr := p.UserServiceConfig.AuthorizeCreatorAccess(
 		ctx,
-		dbProblem.CreatedBy,
-		user.ID,
+		oldProblem.CreatedBy,
+		claims.UserId,
 		fmt.Sprintf(
-			"user %s tried to modify problem with id %v",
-			user.UserName,
+			"user %s tried to update the problem with id %v",
+			claims.UserName,
 			problem.ID,
 		),
 	)
-	if err != nil {
-		return
+	if authErr != nil {
+		return Problem{}, authErr
 	}
 
-	// validate the problem data
-	err = p.validateProblem(ctx, problem)
-	if err != nil {
-		return
+	// validate the new problem
+	valErr := p.validateProblem(ctx, problem)
+	if valErr != nil {
+		return Problem{}, valErr
 	}
 
-	// get UpdateProblemParams
-	params, err := getUpdateProblemParams(user.ID, problem.ID, problem)
-	if err != nil {
-		return
-	}
-
-	// update the problem in the database
-	dbProblem, err = p.DB.UpdateProblem(ctx, params)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, problem with id %v do not exist", flux_errors.ErrNotFound, problem.ID)
-			log.Error(err)
-			return
+	// fetch old lock
+	var oldLock *lock_service.FluxLock
+	if oldProblem.LockId != nil {
+		lock, err := p.LockServiceConfig.GetLockById(
+			ctx,
+			*oldProblem.LockId,
+		)
+		if err != nil {
+			return Problem{}, err
 		}
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) {
-			if pqErr.Code == flux_errors.CodeUniqueConstraintViolation {
-				err = fmt.Errorf(
-					"%w, problem with that key already exists",
+		oldLock = &lock
+	}
+
+	// fetch new lock
+	var newLock *lock_service.FluxLock
+	if problem.LockId != nil {
+		lock, err := p.LockServiceConfig.GetLockById(
+			ctx,
+			*problem.LockId,
+		)
+		if err != nil {
+			return Problem{}, err
+		}
+		newLock = &lock
+	}
+
+	// validate lock change
+	err = p.validateProblemLockChange(oldLock, newLock)
+	if err != nil {
+		return Problem{}, err
+	}
+
+	// update the problem
+	params, err := getUpdateProblemParams(claims.UserId, problem)
+	if err != nil {
+		return Problem{}, err
+	}
+	updatedProblem, updateErr := p.DB.UpdateProblem(
+		ctx,
+		params,
+	)
+	if updateErr != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(updateErr, &pgErr) {
+			if pgErr.Code == flux_errors.CodeUniqueConstraintViolation {
+				return Problem{}, fmt.Errorf(
+					"%w, %s problem with that key already exist",
 					flux_errors.ErrInvalidRequest,
+					pgErr.Detail,
 				)
-				return
 			}
 		}
-		log.Errorf("unable to update problem with id %d: %v", problem.ID, err)
 		err = fmt.Errorf(
-			"%w, unable to update problem with id %d: %w",
+			"%w, unable to insert problem into database, %w",
 			flux_errors.ErrInternal,
-			problem.ID, err,
+			updateErr,
 		)
-		return
+		log.Error(err)
+		return Problem{}, err
 	}
-	log.Infof("problem with id %d is updated by user %v", problem.ID, user.UserName)
 
-	// prepare the response
-	problemResponse, err = dbProblemToServiceProblem(dbProblem)
-	return
+	problem, err = dbProblemToServiceProblem(updatedProblem)
+
+	return problem, err
+}
+
+func getUpdateProblemParams(
+	updatingUserId uuid.UUID,
+	problem Problem,
+) (database.UpdateProblemParams, error) {
+	dbProblemData, err := getDBProblemDataFromProblem(problem)
+	if err != nil {
+		return database.UpdateProblemParams{}, err
+	}
+
+	// Map fields to AddProblemParams
+	return database.UpdateProblemParams{
+		ID:               problem.ID,
+		Title:            problem.Title,
+		Statement:        problem.Statement,
+		InputFormat:      problem.InputFormat,
+		OutputFormat:     problem.OutputFormat,
+		ExampleTestcases: dbProblemData.exampleTestCases, // Note: Typo in field name, should be ExampleTestcases if that's the intended field
+		Notes:            problem.Notes,
+		MemoryLimitKb:    problem.MemoryLimitKB,
+		TimeLimitMs:      problem.TimeLimitMS,
+		Difficulty:       problem.Difficulty,
+		SubmissionLink:   problem.SubmissionLink,
+		Platform:         dbProblemData.platformType,
+		LockID:           problem.LockId,
+		LastUpdatedBy:    updatingUserId,
+	}, nil
+}
+
+func (p *ProblemService) validateProblemLockChange(
+	oldLock *lock_service.FluxLock,
+	newLock *lock_service.FluxLock,
+) error {
+	// lock is nil
+	if oldLock == nil && newLock == nil {
+		return nil
+	}
+
+	// locking the problem
+	if oldLock == nil && newLock != nil {
+		// can only assign a manual lock
+		if newLock.Type == database.LockTypeTimer {
+			return fmt.Errorf(
+				"%w, cannot lock the problem with a timer lock once created",
+				flux_errors.ErrInvalidRequest,
+			)
+		}
+
+		return nil
+	}
+
+	// unlock the problem
+	if oldLock != nil && newLock == nil {
+		// can only remove a manual lock
+		if oldLock.Type == database.LockTypeTimer {
+			return fmt.Errorf(
+				"%w, cannot remove timer lock once assigned",
+				flux_errors.ErrInvalidRequest,
+			)
+		}
+
+		return nil
+	}
+
+	if oldLock.ID == newLock.ID {
+		return nil
+	}
+
+	// lock is being changed
+
+	// can only change manual lock
+	if oldLock.Type == database.LockTypeTimer || newLock.Type == database.LockTypeTimer {
+		return fmt.Errorf(
+			"%w, cannot change lock if either old or new lock is a timer lock",
+			flux_errors.ErrInvalidRequest,
+		)
+	}
+
+	return nil
 }

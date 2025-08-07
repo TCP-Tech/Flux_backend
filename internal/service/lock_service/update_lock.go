@@ -7,14 +7,15 @@ import (
 
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
 )
 
 func (l *LockService) UpdateLock(
 	ctx context.Context,
 	lock FluxLock,
 ) (res FluxLock, err error) {
-	// fetch user from claims
-	user, err := l.UserServiceConfig.FetchUserFromClaims(ctx)
+	// get the user details from claims
+	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
 		return
 	}
@@ -29,10 +30,10 @@ func (l *LockService) UpdateLock(
 	err = l.UserServiceConfig.AuthorizeCreatorAccess(
 		ctx,
 		previousLock.CreatedBy,
-		user.ID,
+		claims.UserId,
 		fmt.Sprintf(
 			"user %s tried to update lock with id %v",
-			user.UserName,
+			claims.UserName,
 			lock.ID,
 		),
 	)
@@ -64,14 +65,12 @@ func (l *LockService) UpdateLock(
 		return
 	}
 
-	timeout, locked := getNullTimeAndNullBool(lock)
 
 	// update the lock
 	dbLock, err := l.DB.UpdateLockDetails(
 		ctx,
 		database.UpdateLockDetailsParams{
-			Timeout:     timeout,
-			Locked:      locked,
+			Timeout:     lock.Timeout,
 			Description: lock.Description,
 			Name:        lock.Name,
 			ID:          lock.ID,

@@ -53,6 +53,8 @@ func translateValidationError(e validator.FieldError) string {
 		return fmt.Sprintf("%s must be less than or equal to %s", e.Field(), e.Param())
 	case "numeric":
 		return fmt.Sprintf("%s must be a numeric value", e.Field())
+	case "oneof":
+		return fmt.Sprintf("%s must be one of the following: %s", e.Field(), e.Param())
 	default:
 		return fmt.Sprintf("Validation failed for %s with rule %s", e.Field(), e.Tag())
 	}

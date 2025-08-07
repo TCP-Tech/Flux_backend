@@ -13,58 +13,84 @@ import (
 )
 
 const createLock = `-- name: CreateLock :one
-INSERT INTO locks (timeout, name, created_by, description) VALUES ($1, $2, $3, $4)
-RETURNING id, timeout, name, created_by, created_at, description, access
+INSERT INTO locks (
+    name,
+    created_by,
+    description,
+    lock_type,
+    timeout
+) VALUES (
+    $1, -- name
+    $2, -- created_by
+    $3, -- description
+    $4, -- lock_type: either timer or manual
+    $5 -- timeout: null only if manual
+)
+RETURNING id, name, created_by, created_at, description, access, lock_type, timeout
 `
 
 type CreateLockParams struct {
-	Timeout     time.Time `json:"timeout"`
-	Name        string    `json:"name"`
-	CreatedBy   uuid.UUID `json:"created_by"`
-	Description string    `json:"description"`
+	Name        string     `json:"name"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	Description string     `json:"description"`
+	LockType    LockType   `json:"lock_type"`
+	Timeout     *time.Time `json:"timeout"`
 }
 
 func (q *Queries) CreateLock(ctx context.Context, arg CreateLockParams) (Lock, error) {
-	row := q.db.QueryRowContext(ctx, createLock,
-		arg.Timeout,
+	row := q.db.QueryRow(ctx, createLock,
 		arg.Name,
 		arg.CreatedBy,
 		arg.Description,
+		arg.LockType,
+		arg.Timeout,
 	)
 	var i Lock
 	err := row.Scan(
 		&i.ID,
-		&i.Timeout,
 		&i.Name,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.Description,
 		&i.Access,
+		&i.LockType,
+		&i.Timeout,
 	)
 	return i, err
 }
 
+const deleteLockById = `-- name: DeleteLockById :exec
+DELETE FROM locks 
+WHERE id=$1
+`
+
+func (q *Queries) DeleteLockById(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteLockById, id)
+	return err
+}
+
 const getLockById = `-- name: GetLockById :one
-SELECT id, timeout, name, created_by, created_at, description, access FROM locks WHERE id=$1
+SELECT id, name, created_by, created_at, description, access, lock_type, timeout FROM locks WHERE id=$1
 `
 
 func (q *Queries) GetLockById(ctx context.Context, id uuid.UUID) (Lock, error) {
-	row := q.db.QueryRowContext(ctx, getLockById, id)
+	row := q.db.QueryRow(ctx, getLockById, id)
 	var i Lock
 	err := row.Scan(
 		&i.ID,
-		&i.Timeout,
 		&i.Name,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.Description,
 		&i.Access,
+		&i.LockType,
+		&i.Timeout,
 	)
 	return i, err
 }
 
 const getLocksByFilter = `-- name: GetLocksByFilter :many
-SELECT id, timeout, name, created_by, created_at, description, access FROM locks
+SELECT id, name, created_by, created_at, description, access, lock_type, timeout FROM locks
 WHERE
     name ILIKE $1
     AND (
@@ -74,12 +100,12 @@ WHERE
 `
 
 type GetLocksByFilterParams struct {
-	Name      string        `json:"name"`
-	CreatedBy uuid.NullUUID `json:"created_by"`
+	Name      string     `json:"name"`
+	CreatedBy *uuid.UUID `json:"created_by"`
 }
 
 func (q *Queries) GetLocksByFilter(ctx context.Context, arg GetLocksByFilterParams) ([]Lock, error) {
-	rows, err := q.db.QueryContext(ctx, getLocksByFilter, arg.Name, arg.CreatedBy)
+	rows, err := q.db.Query(ctx, getLocksByFilter, arg.Name, arg.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -89,19 +115,17 @@ func (q *Queries) GetLocksByFilter(ctx context.Context, arg GetLocksByFilterPara
 		var i Lock
 		if err := rows.Scan(
 			&i.ID,
-			&i.Timeout,
 			&i.Name,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.Description,
 			&i.Access,
+			&i.LockType,
+			&i.Timeout,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -117,18 +141,18 @@ SET
     description = $4
 WHERE
     id = $1
-RETURNING id, timeout, name, created_by, created_at, description, access
+RETURNING id, name, created_by, created_at, description, access, lock_type, timeout
 `
 
 type UpdateLockDetailsParams struct {
-	ID          uuid.UUID `json:"id"`
-	Name        string    `json:"name"`
-	Timeout     time.Time `json:"timeout"`
-	Description string    `json:"description"`
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	Timeout     *time.Time `json:"timeout"`
+	Description string     `json:"description"`
 }
 
 func (q *Queries) UpdateLockDetails(ctx context.Context, arg UpdateLockDetailsParams) (Lock, error) {
-	row := q.db.QueryRowContext(ctx, updateLockDetails,
+	row := q.db.QueryRow(ctx, updateLockDetails,
 		arg.ID,
 		arg.Name,
 		arg.Timeout,
@@ -137,12 +161,13 @@ func (q *Queries) UpdateLockDetails(ctx context.Context, arg UpdateLockDetailsPa
 	var i Lock
 	err := row.Scan(
 		&i.ID,
-		&i.Timeout,
 		&i.Name,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.Description,
 		&i.Access,
+		&i.LockType,
+		&i.Timeout,
 	)
 	return i, err
 }

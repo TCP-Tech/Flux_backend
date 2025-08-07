@@ -1,52 +1,28 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service/problem_service"
 )
 
-func (a *Api) HandlerGetProblems(w http.ResponseWriter, r *http.Request) {
+func (a *Api) HandlerGetProblemById(w http.ResponseWriter, r *http.Request) {
 	// get problem id
 	problemIdStr := r.URL.Query().Get("problem_id")
-	if problemIdStr != "" {
-		// cast the problemId to int
-		problemId, err := strconv.Atoi(problemIdStr)
-		if err != nil {
-			http.Error(w, "invalid problem id, problem id must be an integer", http.StatusBadRequest)
-			return
-		}
 
-		a.getProblemById(int32(problemId), w, r.Context())
+	// cast it to int
+	problemId, err := strconv.Atoi(problemIdStr)
+	if err != nil {
+		http.Error(w, "invalid problem id, problem id must be an integer", http.StatusBadRequest)
 		return
 	}
 
-	// fetch titleSubStr
-	title := r.URL.Query().Get("title")
-
-	// Get query parameters for page and pageSize
-	page := r.URL.Query().Get("page")
-	pageSize := r.URL.Query().Get("page_size")
-
-	// extract the userName or rollNo
-	userName := r.URL.Query().Get("user_name")
-	rollNo := r.URL.Query().Get("roll_no")
-
-	a.listProblemsWithPagination(
-		page, pageSize,
-		title, userName, rollNo,
-		w, r.Context(),
-	)
-}
-
-func (a *Api) getProblemById(problemId int32, w http.ResponseWriter, ctx context.Context) {
 	// fetch the problem using service
-	problem, err := a.ProblemServiceConfig.GetProblemById(ctx, int32(problemId))
+	problem, err := a.ProblemServiceConfig.GetProblemById(r.Context(), int32(problemId))
 	if err != nil {
 		handlerError(err, w)
 		return
@@ -63,35 +39,28 @@ func (a *Api) getProblemById(problemId int32, w http.ResponseWriter, ctx context
 	respondWithJson(w, http.StatusOK, responseBytes)
 }
 
-// Handler function to fetch problems with pagination
-func (a *Api) listProblemsWithPagination(
-	page, pageSize, title, userName, rollNo string,
-	w http.ResponseWriter,
-	ctx context.Context,
-) {
-	problems, err := a.ProblemServiceConfig.ListProblemsWithPagination(
-		ctx,
-		page, pageSize,
-		title, userName, rollNo,
-	)
-	var statusCode int
-	if err != nil {
-		if !errors.Is(err, flux_errors.ErrPartialResult) {
-			handlerError(err, w)
-			return
-		}
-		statusCode = http.StatusPartialContent
-	} else {
-		statusCode = http.StatusOK
+func (a *Api) HandlerGetProblemsByFilters(w http.ResponseWriter, r *http.Request) {
+	var getProblemsRequest problem_service.GetProblemsRequest
+	decodeErr := decodeJsonBody(r.Body, &getProblemsRequest)
+	if decodeErr != nil {
+		http.Error(w, decodeErr.Error(), http.StatusBadRequest)
+		return
 	}
 
-	// Marshal and respond with the problems
-	responseBytes, marshalErr := json.Marshal(problems)
-	if marshalErr != nil {
-		log.Errorf("unable to marshal problems: %v", marshalErr)
+	// fetch problems from service
+	problems, fetchErr := a.ProblemServiceConfig.GetProblemsByFilters(r.Context(), getProblemsRequest)
+	if fetchErr != nil {
+		handlerError(fetchErr, w)
+		return
+	}
+
+	// marshal
+	response, marsErr := json.Marshal(problems)
+	if marsErr != nil {
+		log.Errorf("cannot marshal %v, %v", problems, marsErr)
 		http.Error(w, flux_errors.ErrInternal.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	respondWithJson(w, statusCode, responseBytes)
+	respondWithJson(w, http.StatusOK, response)
 }

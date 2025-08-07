@@ -27,7 +27,7 @@ type CreateUserParams struct {
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser,
+	row := q.db.QueryRow(ctx, createUser,
 		arg.UserName,
 		arg.RollNo,
 		arg.PasswordHash,
@@ -54,7 +54,7 @@ SELECT id, roll_no, user_name, first_name, last_name, email, password_hash, crea
 `
 
 func (q *Queries) GetUserById(ctx context.Context, id uuid.UUID) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserById, id)
+	row := q.db.QueryRow(ctx, getUserById, id)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -74,7 +74,7 @@ SELECT id, roll_no, user_name, first_name, last_name, email, password_hash, crea
 `
 
 func (q *Queries) GetUserByRollNumber(ctx context.Context, rollNo string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByRollNumber, rollNo)
+	row := q.db.QueryRow(ctx, getUserByRollNumber, rollNo)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -94,7 +94,7 @@ SELECT id, roll_no, user_name, first_name, last_name, email, password_hash, crea
 `
 
 func (q *Queries) GetUserByUserName(ctx context.Context, userName string) (User, error) {
-	row := q.db.QueryRowContext(ctx, getUserByUserName, userName)
+	row := q.db.QueryRow(ctx, getUserByUserName, userName)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -114,7 +114,7 @@ SELECT COUNT(*) FROM users WHERE user_name = $1
 `
 
 func (q *Queries) GetUsersCountByUserName(ctx context.Context, userName string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getUsersCountByUserName, userName)
+	row := q.db.QueryRow(ctx, getUsersCountByUserName, userName)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -130,6 +130,6 @@ type ResetPasswordParams struct {
 }
 
 func (q *Queries) ResetPassword(ctx context.Context, arg ResetPasswordParams) error {
-	_, err := q.db.ExecContext(ctx, resetPassword, arg.UserName, arg.PasswordHash)
+	_, err := q.db.Exec(ctx, resetPassword, arg.UserName, arg.PasswordHash)
 	return err
 }

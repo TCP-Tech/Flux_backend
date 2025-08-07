@@ -16,7 +16,7 @@ SELECT user_id, role_name FROM user_roles WHERE user_id = $1
 `
 
 func (q *Queries) GetUserRolesByUserName(ctx context.Context, userID uuid.UUID) ([]UserRole, error) {
-	rows, err := q.db.QueryContext(ctx, getUserRolesByUserName, userID)
+	rows, err := q.db.Query(ctx, getUserRolesByUserName, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -28,9 +28,6 @@ func (q *Queries) GetUserRolesByUserName(ctx context.Context, userID uuid.UUID) 
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -2,7 +2,7 @@
 -- Create a sequence that starts at 1234
 CREATE SEQUENCE problems_id_seq START WITH 1234;
 
-CREATE TYPE platform_type AS ENUM (
+CREATE TYPE Platform AS ENUM (
     'codeforces'
 );
 
@@ -22,9 +22,9 @@ CREATE TABLE problems (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     difficulty INTEGER NOT NULL,
-    submission_link TEXT UNIQUE,
-    platform platform_type,
-    lock_id UUID REFERENCES locks(id) 
+    submission_link TEXT NULL UNIQUE,
+    platform Platform NULL,
+    lock_id UUID REFERENCES locks(id) ON DELETE SET NULL
 );
 
 -- indexes for common lookup fields
@@ -53,4 +53,4 @@ DROP INDEX idx_problems_platform;
 DROP INDEX idx_problems_created_by;
 DROP TABLE problems;
 DROP SEQUENCE problems_id_seq;
-DROP TYPE platform_type;
+DROP TYPE Platform;

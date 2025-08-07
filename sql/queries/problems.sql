@@ -30,13 +30,25 @@ INSERT INTO problems (
     $12, -- platform (can be NULL)
     $13 -- lock_id
 )
-RETURNING id, created_at, updated_at;
+RETURNING *;
 
 -- name: CheckPlatformType :one
-SELECT $1::platform_type;
+SELECT $1::Platform;
 
 -- name: GetProblemById :one
-SELECT * FROM problems WHERE id = $1;
+SELECT
+    -- Explicitly list all columns from 'problems' except 'lock_id'
+    problems.*,
+
+    -- Select only the 'access' column from the 'locks' table
+    locks.access
+FROM
+    problems
+LEFT JOIN
+    locks ON problems.lock_id = locks.id
+WHERE
+    problems.id = $1;
+
 
 -- name: UpdateProblem :one
 UPDATE problems
@@ -52,19 +64,39 @@ SET
     difficulty = $9,
     submission_link = $10,
     platform = $11,
-    last_updated_by = $12
+    last_updated_by = $12,
+    lock_id = $13
 WHERE
-    id = $13
+    id = $14
 RETURNING *;
 
--- name: ListProblemsWithPagination :many
-SELECT * FROM problems
+-- name: GetProblemsByFilters :many
+SELECT
+    -- Columns from the 'problems' table
+    problems.id,
+    problems.title,
+    problems.difficulty,
+    problems.platform,
+    problems.created_by,
+    problems.created_at,
+
+    -- Columns from the 'locks' table, with aliases
+    locks.access as lock_access
+FROM
+    problems
+LEFT JOIN
+    locks ON problems.lock_id = locks.id
 WHERE
-    title ILIKE $1 AND
+    -- Mandatory case-insensitive search on the problem title
+    problems.title ILIKE sqlc.arg('title')  AND
     (
-        $2::uuid = created_by OR
-        $2::uuid IS NULL
-    ) AND
-    lock_id IS NULL
-ORDER BY created_at DESC
-LIMIT $3 OFFSET $4;
+        -- Optional filter by the user who created the problem
+        problems.created_by = sqlc.narg('created_by')::uuid OR
+        sqlc.narg('created_by')::uuid IS NULL
+    )
+ORDER BY
+    problems.created_at DESC
+LIMIT
+    sqlc.arg('limit')
+OFFSET
+    sqlc.arg('offset');

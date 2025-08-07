@@ -69,8 +69,7 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		// log the endpoint user tyring to access
 		log.WithFields(log.Fields{
-			"user_name": claims.UserName,
-			"roll_no":   claims.RollNo,
+			"user_id": claims.UserId,
 		}).Infof("accessing %v endpoint under %v method", r.URL.Path, r.Method)
 
 		// pass the claims with context

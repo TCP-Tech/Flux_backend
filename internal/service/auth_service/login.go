@@ -60,7 +60,7 @@ func (a *AuthService) Login(
 	}
 
 	tokenExpiry = exp
-	userLoginResponse = dbUserToLoginRes(exp, roles, user)
+	userLoginResponse = dbUserToLoginRes(roles, user)
 
 	return
 }

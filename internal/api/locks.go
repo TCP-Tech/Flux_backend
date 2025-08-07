@@ -77,3 +77,21 @@ func (a *Api) HandlerUpdateLock(w http.ResponseWriter, r *http.Request) {
 
 	respondWithJson(w, http.StatusOK, bytes)
 }
+
+func (a *Api) HanlderDeleteLockById(w http.ResponseWriter, r *http.Request) {
+	// get the id
+	lockIdStr := r.URL.Query().Get("lock_id")
+	lockId, err := uuid.Parse(lockIdStr)
+	if err != nil {
+		http.Error(w, "invalid lock id provided", http.StatusBadRequest)
+		return
+	}
+
+	err = a.LockServiceConfig.DeleteLock(r.Context(), lockId)
+	if err != nil {
+		handlerError(err, w)
+		return
+	}
+
+	respondWithJson(w, http.StatusOK, []byte("lock deleted successfully"))
+}

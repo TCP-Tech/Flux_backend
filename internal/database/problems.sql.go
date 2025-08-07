@@ -7,11 +7,10 @@ package database
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sqlc-dev/pqtype"
 )
 
 const addProblem = `-- name: AddProblem :one
@@ -46,33 +45,27 @@ INSERT INTO problems (
     $12, -- platform (can be NULL)
     $13 -- lock_id
 )
-RETURNING id, created_at, updated_at
+RETURNING id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id
 `
 
 type AddProblemParams struct {
-	Title            string                `json:"title"`
-	Statement        string                `json:"statement"`
-	InputFormat      string                `json:"input_format"`
-	OutputFormat     string                `json:"output_format"`
-	ExampleTestcases pqtype.NullRawMessage `json:"example_testcases"`
-	Notes            sql.NullString        `json:"notes"`
-	MemoryLimitKb    int32                 `json:"memory_limit_kb"`
-	TimeLimitMs      int32                 `json:"time_limit_ms"`
-	CreatedBy        uuid.UUID             `json:"created_by"`
-	Difficulty       int32                 `json:"difficulty"`
-	SubmissionLink   sql.NullString        `json:"submission_link"`
-	Platform         NullPlatformType      `json:"platform"`
-	LockID           uuid.NullUUID         `json:"lock_id"`
+	Title            string           `json:"title"`
+	Statement        string           `json:"statement"`
+	InputFormat      string           `json:"input_format"`
+	OutputFormat     string           `json:"output_format"`
+	ExampleTestcases *json.RawMessage `json:"example_testcases"`
+	Notes            *string          `json:"notes"`
+	MemoryLimitKb    int32            `json:"memory_limit_kb"`
+	TimeLimitMs      int32            `json:"time_limit_ms"`
+	CreatedBy        uuid.UUID        `json:"created_by"`
+	Difficulty       int32            `json:"difficulty"`
+	SubmissionLink   *string          `json:"submission_link"`
+	Platform         NullPlatform     `json:"platform"`
+	LockID           *uuid.UUID       `json:"lock_id"`
 }
 
-type AddProblemRow struct {
-	ID        int32     `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-func (q *Queries) AddProblem(ctx context.Context, arg AddProblemParams) (AddProblemRow, error) {
-	row := q.db.QueryRowContext(ctx, addProblem,
+func (q *Queries) AddProblem(ctx context.Context, arg AddProblemParams) (Problem, error) {
+	row := q.db.QueryRow(ctx, addProblem,
 		arg.Title,
 		arg.Statement,
 		arg.InputFormat,
@@ -87,28 +80,6 @@ func (q *Queries) AddProblem(ctx context.Context, arg AddProblemParams) (AddProb
 		arg.Platform,
 		arg.LockID,
 	)
-	var i AddProblemRow
-	err := row.Scan(&i.ID, &i.CreatedAt, &i.UpdatedAt)
-	return i, err
-}
-
-const checkPlatformType = `-- name: CheckPlatformType :one
-SELECT $1::platform_type
-`
-
-func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 string) (string, error) {
-	row := q.db.QueryRowContext(ctx, checkPlatformType, dollar_1)
-	var column_1 string
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const getProblemById = `-- name: GetProblemById :one
-SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id FROM problems WHERE id = $1
-`
-
-func (q *Queries) GetProblemById(ctx context.Context, id int32) (Problem, error) {
-	row := q.db.QueryRowContext(ctx, getProblemById, id)
 	var i Problem
 	err := row.Scan(
 		&i.ID,
@@ -132,65 +103,154 @@ func (q *Queries) GetProblemById(ctx context.Context, id int32) (Problem, error)
 	return i, err
 }
 
-const listProblemsWithPagination = `-- name: ListProblemsWithPagination :many
-SELECT id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id FROM problems
-WHERE
-    title ILIKE $1 AND
-    (
-        $2::uuid = created_by OR
-        $2::uuid IS NULL
-    ) AND
-    lock_id IS NULL
-ORDER BY created_at DESC
-LIMIT $3 OFFSET $4
+const checkPlatformType = `-- name: CheckPlatformType :one
+SELECT $1::Platform
 `
 
-type ListProblemsWithPaginationParams struct {
-	Title   string    `json:"title"`
-	Column2 uuid.UUID `json:"column_2"`
-	Limit   int32     `json:"limit"`
-	Offset  int32     `json:"offset"`
+func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 Platform) (Platform, error) {
+	row := q.db.QueryRow(ctx, checkPlatformType, dollar_1)
+	var column_1 Platform
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
-func (q *Queries) ListProblemsWithPagination(ctx context.Context, arg ListProblemsWithPaginationParams) ([]Problem, error) {
-	rows, err := q.db.QueryContext(ctx, listProblemsWithPagination,
+const getProblemById = `-- name: GetProblemById :one
+SELECT
+    -- Explicitly list all columns from 'problems' except 'lock_id'
+    problems.id, problems.title, problems.statement, problems.input_format, problems.output_format, problems.example_testcases, problems.notes, problems.memory_limit_kb, problems.time_limit_ms, problems.created_by, problems.last_updated_by, problems.created_at, problems.updated_at, problems.difficulty, problems.submission_link, problems.platform, problems.lock_id,
+
+    -- Select only the 'access' column from the 'locks' table
+    locks.access
+FROM
+    problems
+LEFT JOIN
+    locks ON problems.lock_id = locks.id
+WHERE
+    problems.id = $1
+`
+
+type GetProblemByIdRow struct {
+	ID               int32            `json:"id"`
+	Title            string           `json:"title"`
+	Statement        string           `json:"statement"`
+	InputFormat      string           `json:"input_format"`
+	OutputFormat     string           `json:"output_format"`
+	ExampleTestcases *json.RawMessage `json:"example_testcases"`
+	Notes            *string          `json:"notes"`
+	MemoryLimitKb    int32            `json:"memory_limit_kb"`
+	TimeLimitMs      int32            `json:"time_limit_ms"`
+	CreatedBy        uuid.UUID        `json:"created_by"`
+	LastUpdatedBy    uuid.UUID        `json:"last_updated_by"`
+	CreatedAt        time.Time        `json:"created_at"`
+	UpdatedAt        time.Time        `json:"updated_at"`
+	Difficulty       int32            `json:"difficulty"`
+	SubmissionLink   *string          `json:"submission_link"`
+	Platform         NullPlatform     `json:"platform"`
+	LockID           *uuid.UUID       `json:"lock_id"`
+	Access           *string          `json:"access"`
+}
+
+func (q *Queries) GetProblemById(ctx context.Context, id int32) (GetProblemByIdRow, error) {
+	row := q.db.QueryRow(ctx, getProblemById, id)
+	var i GetProblemByIdRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Statement,
+		&i.InputFormat,
+		&i.OutputFormat,
+		&i.ExampleTestcases,
+		&i.Notes,
+		&i.MemoryLimitKb,
+		&i.TimeLimitMs,
+		&i.CreatedBy,
+		&i.LastUpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Difficulty,
+		&i.SubmissionLink,
+		&i.Platform,
+		&i.LockID,
+		&i.Access,
+	)
+	return i, err
+}
+
+const getProblemsByFilters = `-- name: GetProblemsByFilters :many
+SELECT
+    -- Columns from the 'problems' table
+    problems.id,
+    problems.title,
+    problems.difficulty,
+    problems.platform,
+    problems.created_by,
+    problems.created_at,
+
+    -- Columns from the 'locks' table, with aliases
+    locks.access as lock_access
+FROM
+    problems
+LEFT JOIN
+    locks ON problems.lock_id = locks.id
+WHERE
+    -- Mandatory case-insensitive search on the problem title
+    problems.title ILIKE $1  AND
+    (
+        -- Optional filter by the user who created the problem
+        problems.created_by = $2::uuid OR
+        $2::uuid IS NULL
+    )
+ORDER BY
+    problems.created_at DESC
+LIMIT
+    $4
+OFFSET
+    $3
+`
+
+type GetProblemsByFiltersParams struct {
+	Title     string     `json:"title"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+	Offset    int32      `json:"offset"`
+	Limit     int32      `json:"limit"`
+}
+
+type GetProblemsByFiltersRow struct {
+	ID         int32        `json:"id"`
+	Title      string       `json:"title"`
+	Difficulty int32        `json:"difficulty"`
+	Platform   NullPlatform `json:"platform"`
+	CreatedBy  uuid.UUID    `json:"created_by"`
+	CreatedAt  time.Time    `json:"created_at"`
+	LockAccess *string      `json:"lock_access"`
+}
+
+func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFiltersParams) ([]GetProblemsByFiltersRow, error) {
+	rows, err := q.db.Query(ctx, getProblemsByFilters,
 		arg.Title,
-		arg.Column2,
-		arg.Limit,
+		arg.CreatedBy,
 		arg.Offset,
+		arg.Limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Problem
+	var items []GetProblemsByFiltersRow
 	for rows.Next() {
-		var i Problem
+		var i GetProblemsByFiltersRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
-			&i.Statement,
-			&i.InputFormat,
-			&i.OutputFormat,
-			&i.ExampleTestcases,
-			&i.Notes,
-			&i.MemoryLimitKb,
-			&i.TimeLimitMs,
-			&i.CreatedBy,
-			&i.LastUpdatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 			&i.Difficulty,
-			&i.SubmissionLink,
 			&i.Platform,
-			&i.LockID,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.LockAccess,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -212,30 +272,32 @@ SET
     difficulty = $9,
     submission_link = $10,
     platform = $11,
-    last_updated_by = $12
+    last_updated_by = $12,
+    lock_id = $13
 WHERE
-    id = $13
+    id = $14
 RETURNING id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id
 `
 
 type UpdateProblemParams struct {
-	Title            string                `json:"title"`
-	Statement        string                `json:"statement"`
-	InputFormat      string                `json:"input_format"`
-	OutputFormat     string                `json:"output_format"`
-	ExampleTestcases pqtype.NullRawMessage `json:"example_testcases"`
-	Notes            sql.NullString        `json:"notes"`
-	MemoryLimitKb    int32                 `json:"memory_limit_kb"`
-	TimeLimitMs      int32                 `json:"time_limit_ms"`
-	Difficulty       int32                 `json:"difficulty"`
-	SubmissionLink   sql.NullString        `json:"submission_link"`
-	Platform         NullPlatformType      `json:"platform"`
-	LastUpdatedBy    uuid.UUID             `json:"last_updated_by"`
-	ID               int32                 `json:"id"`
+	Title            string           `json:"title"`
+	Statement        string           `json:"statement"`
+	InputFormat      string           `json:"input_format"`
+	OutputFormat     string           `json:"output_format"`
+	ExampleTestcases *json.RawMessage `json:"example_testcases"`
+	Notes            *string          `json:"notes"`
+	MemoryLimitKb    int32            `json:"memory_limit_kb"`
+	TimeLimitMs      int32            `json:"time_limit_ms"`
+	Difficulty       int32            `json:"difficulty"`
+	SubmissionLink   *string          `json:"submission_link"`
+	Platform         NullPlatform     `json:"platform"`
+	LastUpdatedBy    uuid.UUID        `json:"last_updated_by"`
+	LockID           *uuid.UUID       `json:"lock_id"`
+	ID               int32            `json:"id"`
 }
 
 func (q *Queries) UpdateProblem(ctx context.Context, arg UpdateProblemParams) (Problem, error) {
-	row := q.db.QueryRowContext(ctx, updateProblem,
+	row := q.db.QueryRow(ctx, updateProblem,
 		arg.Title,
 		arg.Statement,
 		arg.InputFormat,
@@ -248,6 +310,7 @@ func (q *Queries) UpdateProblem(ctx context.Context, arg UpdateProblemParams) (P
 		arg.SubmissionLink,
 		arg.Platform,
 		arg.LastUpdatedBy,
+		arg.LockID,
 		arg.ID,
 	)
 	var i Problem

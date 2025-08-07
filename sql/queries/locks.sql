@@ -1,5 +1,17 @@
 -- name: CreateLock :one
-INSERT INTO locks (timeout, name, created_by, description) VALUES ($1, $2, $3, $4)
+INSERT INTO locks (
+    name,
+    created_by,
+    description,
+    lock_type,
+    timeout
+) VALUES (
+    $1, -- name
+    $2, -- created_by
+    $3, -- description
+    $4, -- lock_type: either timer or manual
+    $5 -- timeout: null only if manual
+)
 RETURNING *;
 
 -- name: GetLockById :one
@@ -23,3 +35,7 @@ WHERE
         sqlc.narg('created_by')::uuid IS NULL OR
         sqlc.narg('created_by')::uuid = created_by
     );
+
+-- name: DeleteLockById :exec
+DELETE FROM locks 
+WHERE id=$1;

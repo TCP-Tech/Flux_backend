@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
@@ -17,8 +18,8 @@ func (l *LockService) GetLockById(
 	ctx context.Context,
 	id uuid.UUID,
 ) (res FluxLock, err error) {
-	// fetch user from claims
-	user, err := l.UserServiceConfig.FetchUserFromClaims(ctx)
+	// get the user details from claims
+	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
 		return
 	}
@@ -46,15 +47,21 @@ func (l *LockService) GetLockById(
 	// authorize
 	err = l.UserServiceConfig.AuthorizeUserRole(
 		ctx,
-		user.ID,
+		claims.UserId,
 		user_service.UserRole(dbLock.Access),
 		fmt.Sprintf(
 			"user %s tried to view lock with id %v",
-			user.UserName,
+			claims.UserName,
 			id,
 		),
 	)
 	if err != nil {
+		if errors.Is(err, flux_errors.ErrUnAuthorized) {
+			err = fmt.Errorf(
+				"%w, lock with given id does not exist",
+				flux_errors.ErrNotFound,
+			)
+		}
 		return
 	}
 
@@ -63,12 +70,10 @@ func (l *LockService) GetLockById(
 
 func (l *LockService) GetLocksByFilters(
 	ctx context.Context,
-	lockName string,
-	creatorUserName string,
-	creatorRollNo string,
+	request GetLocksRequest,
 ) ([]FluxLock, error) {
-	// fetch user from claims
-	user, err := l.UserServiceConfig.FetchUserFromClaims(ctx)
+	// get the user details from claims
+	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -77,11 +82,11 @@ func (l *LockService) GetLocksByFilters(
 	// only manager or above can view locks
 	err = l.UserServiceConfig.AuthorizeUserRole(
 		ctx,
-		user.ID,
+		claims.UserId,
 		user_service.RoleManager,
 		fmt.Sprintf(
 			"user %s tried to view lock with filters",
-			user.UserName,
+			claims.UserName,
 		),
 	)
 	if err != nil {
@@ -89,25 +94,24 @@ func (l *LockService) GetLocksByFilters(
 	}
 
 	// fetch creator id if user_name or roll_no is provided
-	var createdBy uuid.NullUUID
-	if creatorUserName != "" || creatorRollNo != "" {
+	var createdBy *uuid.UUID
+	if request.CreatorUserName != "" || request.CreatorRollNo != "" {
 		user, err := l.UserServiceConfig.FetchUserFromDb(
 			ctx,
-			creatorUserName,
-			creatorRollNo,
+			request.CreatorUserName,
+			request.CreatorRollNo,
 		)
 		if err != nil {
 			return nil, err
 		}
-		createdBy.Valid = true
-		createdBy.UUID = user.ID
+		createdBy = &user.ID
 	}
 
 	// fetch the locks by filters
 	dbLocks, err := l.DB.GetLocksByFilter(
 		ctx,
 		database.GetLocksByFilterParams{
-			Name:      fmt.Sprintf("%%%s%%", lockName),
+			Name:      fmt.Sprintf("%%%s%%", request.LockName),
 			CreatedBy: createdBy,
 		},
 	)
@@ -117,13 +121,7 @@ func (l *LockService) GetLocksByFilters(
 			flux_errors.ErrInternal,
 			err,
 		)
-		log.WithFields(
-			log.Fields{
-				"lockName":          lockName,
-				"creator_user_name": creatorUserName,
-				"creator_roll_no":   creatorRollNo,
-			},
-		).Error(err)
+		log.WithField("request", request).Error(err)
 		return nil, err
 	}
 
@@ -132,7 +130,7 @@ func (l *LockService) GetLocksByFilters(
 	for _, dbLock := range dbLocks {
 		err = l.UserServiceConfig.AuthorizeUserRole(
 			ctx,
-			user.ID,
+			claims.UserId,
 			user_service.UserRole(dbLock.Access),
 			"",
 		)

@@ -1,7 +1,6 @@
 package lock_service
 
 import (
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -22,20 +21,9 @@ func validateLock(lock FluxLock) error {
 		return validateTimerLock(lock)
 	}
 
-	return validateManualLock(lock)
-}
-
-func validateManualLock(lock FluxLock) error {
 	if lock.Timeout != nil {
 		return fmt.Errorf(
 			"%w, manual lock cannot have a timer",
-			flux_errors.ErrInvalidRequest,
-		)
-	}
-
-	if lock.Locked == nil {
-		return fmt.Errorf(
-			"%w, manual lock must not have locked field as null",
 			flux_errors.ErrInvalidRequest,
 		)
 	}
@@ -44,13 +32,6 @@ func validateManualLock(lock FluxLock) error {
 }
 
 func validateTimerLock(lock FluxLock) error {
-	if lock.Locked != nil {
-		return fmt.Errorf(
-			"%w, timer lock must have locked filed as null",
-			flux_errors.ErrInvalidRequest,
-		)
-	}
-
 	if lock.Timeout == nil {
 		return fmt.Errorf(
 			"%w, timer lock must not have timeout as null. Try to check the format of the timout",
@@ -79,40 +60,16 @@ func validateTimerLock(lock FluxLock) error {
 }
 
 func dbLockToServiceLock(dbLock database.Lock) FluxLock {
-	var timeout *time.Time
-	if dbLock.Timeout.Valid {
-		timeout = &dbLock.Timeout.Time
-	}
-	var locked *bool
-	if dbLock.Locked.Valid {
-		locked = &dbLock.Locked.Bool
-	}
 	return FluxLock{
-		Timeout:     timeout,
+		Timeout:     dbLock.Timeout,
 		CreatedBy:   dbLock.CreatedBy,
 		CreatedAt:   dbLock.CreatedAt,
 		Name:        dbLock.Name,
 		ID:          dbLock.ID,
 		Description: dbLock.Description,
-		Locked:      locked,
 		Type:        dbLock.LockType,
 		Access:      user_service.UserRole(dbLock.Access),
 	}
-}
-
-func getNullTimeAndNullBool(lock FluxLock) (sql.NullTime, sql.NullBool) {
-	var timeout sql.NullTime
-	var locked sql.NullBool
-
-	if lock.Timeout != nil {
-		timeout.Valid = true
-		timeout.Time = *lock.Timeout
-	} else {
-		locked.Valid = true
-		locked.Bool = *lock.Locked
-	}
-
-	return timeout, locked
 }
 
 func (l *LockService) IsLockExpired(

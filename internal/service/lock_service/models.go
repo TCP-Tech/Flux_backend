@@ -18,9 +18,14 @@ type FluxLock struct {
 	Name        string                `json:"name" validate:"min=4"`
 	CreatedBy   uuid.UUID             `json:"created_by"`
 	Type        database.LockType     `json:"lock_type" validate:"oneof=timer manual"`
-	Locked      *bool                 `json:"locked"`
 	CreatedAt   time.Time             `json:"created_at"`
 	Timeout     *time.Time            `json:"timeout"`
 	Description string                `json:"description"`
 	Access      user_service.UserRole `json:"-"`
+}
+
+type GetLocksRequest struct {
+	LockName        string `json:"lock_name"`
+	CreatorUserName string `json:"creator_user_name"`
+	CreatorRollNo   string `json:"creator_roll_no"`
 }
