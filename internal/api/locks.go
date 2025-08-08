@@ -12,30 +12,41 @@ import (
 
 func (a *Api) HandlerCreateLock(w http.ResponseWriter, r *http.Request) {
 	// decode the body
-	var lock lock_service.FluxLock
-	err := decodeJsonBody(r.Body, &lock)
+	type cretaeLockRequest struct {
+		Lock            lock_service.FluxLock `json:"lock"`
+		GenerateGroupId bool                  `json:"generate_group_id"`
+	}
+	var request cretaeLockRequest
+	err := decodeJsonBody(r.Body, &request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// create lock with service
-	id, err := a.LockServiceConfig.CreateLock(r.Context(), lock)
+	lock, err := a.LockServiceConfig.CreateLock(
+		r.Context(),
+		request.Lock,
+		request.GenerateGroupId,
+	)
 	if err != nil {
 		handlerError(err, w)
 		return
 	}
 
-	// convert into []byte for response
-	response := struct {
-		ID uuid.UUID `json:"lock_id"`
-	}{ID: id}
-	bytes, err := json.Marshal(response)
+	bytes, err := json.Marshal(lock)
 	if err != nil {
-		log.Errorf("error marshalling response, but lock created with ID %s: %v", id.String(), err)
+		log.Errorf(
+			"cannot marshal %v, %v",
+			lock,
+			err,
+		)
 		http.Error(
 			w,
-			fmt.Sprintf("Failed to prepare response, but lock was created with ID: %s", id.String()),
+			fmt.Sprintf(
+				"Failed to prepare response, but lock was created with ID: %v",
+				lock.ID,
+			),
 			http.StatusInternalServerError,
 		)
 		return

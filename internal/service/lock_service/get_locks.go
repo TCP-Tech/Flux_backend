@@ -72,6 +72,12 @@ func (l *LockService) GetLocksByFilters(
 	ctx context.Context,
 	request GetLocksRequest,
 ) ([]FluxLock, error) {
+	// validate request
+	err := service.ValidateInput(request)
+	if err != nil {
+		return nil, err
+	}
+
 	// get the user details from claims
 	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
@@ -93,6 +99,19 @@ func (l *LockService) GetLocksByFilters(
 		return nil, err
 	}
 
+	// parse group id
+	var groupID *uuid.UUID
+	if request.GroupId != nil {
+		parsedId, err := uuid.Parse(*request.GroupId)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"%w, invalid group id",
+				flux_errors.ErrInvalidRequest,
+			)
+		}
+		groupID = &parsedId
+	}
+
 	// fetch creator id if user_name or roll_no is provided
 	var createdBy *uuid.UUID
 	if request.CreatorUserName != "" || request.CreatorRollNo != "" {
@@ -107,12 +126,18 @@ func (l *LockService) GetLocksByFilters(
 		createdBy = &user.ID
 	}
 
+	// calculate offset
+	offset := (request.PageNumber - 1) * request.PageSize
+
 	// fetch the locks by filters
 	dbLocks, err := l.DB.GetLocksByFilter(
 		ctx,
 		database.GetLocksByFilterParams{
 			Name:      fmt.Sprintf("%%%s%%", request.LockName),
 			CreatedBy: createdBy,
+			GroupID:   groupID,
+			Offset:    offset,
+			Limit:     request.PageSize,
 		},
 	)
 	if err != nil {

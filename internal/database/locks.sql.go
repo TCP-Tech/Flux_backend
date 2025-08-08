@@ -18,15 +18,17 @@ INSERT INTO locks (
     created_by,
     description,
     lock_type,
-    timeout
+    timeout,
+    group_id
 ) VALUES (
     $1, -- name
     $2, -- created_by
     $3, -- description
     $4, -- lock_type: either timer or manual
-    $5 -- timeout: null only if manual
+    $5, -- timeout: null only if manual
+    $6 -- group_id: to manage a group of locks
 )
-RETURNING id, name, created_by, created_at, description, access, lock_type, timeout
+RETURNING id, name, group_id, created_by, created_at, description, access, lock_type, timeout
 `
 
 type CreateLockParams struct {
@@ -35,6 +37,7 @@ type CreateLockParams struct {
 	Description string     `json:"description"`
 	LockType    LockType   `json:"lock_type"`
 	Timeout     *time.Time `json:"timeout"`
+	GroupID     *uuid.UUID `json:"group_id"`
 }
 
 func (q *Queries) CreateLock(ctx context.Context, arg CreateLockParams) (Lock, error) {
@@ -44,11 +47,13 @@ func (q *Queries) CreateLock(ctx context.Context, arg CreateLockParams) (Lock, e
 		arg.Description,
 		arg.LockType,
 		arg.Timeout,
+		arg.GroupID,
 	)
 	var i Lock
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.GroupID,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.Description,
@@ -70,15 +75,16 @@ func (q *Queries) DeleteLockById(ctx context.Context, id uuid.UUID) error {
 }
 
 const getLockById = `-- name: GetLockById :one
-SELECT id, name, created_by, created_at, description, access, lock_type, timeout FROM locks WHERE id=$1
+SELECT id, name, group_id, created_by, created_at, description, access, lock_type, timeout FROM locks WHERE id=$1
 `
 
-func (q *Queries) GetLockById(ctx context.Context, id uuid.UUID) (Lock, error) {
-	row := q.db.QueryRow(ctx, getLockById, id)
+func (q *Queries) GetLockById(ctx context.Context, groupD uuid.UUID) (Lock, error) {
+	row := q.db.QueryRow(ctx, getLockById, groupD)
 	var i Lock
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.GroupID,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.Description,
@@ -89,23 +95,53 @@ func (q *Queries) GetLockById(ctx context.Context, id uuid.UUID) (Lock, error) {
 	return i, err
 }
 
+const getLockGroupTimeout = `-- name: GetLockGroupTimeout :one
+SELECT timeout
+FROM locks
+WHERE group_id = $1
+LIMIT 1
+`
+
+func (q *Queries) GetLockGroupTimeout(ctx context.Context, groupID *uuid.UUID) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, getLockGroupTimeout, groupID)
+	var timeout *time.Time
+	err := row.Scan(&timeout)
+	return timeout, err
+}
+
 const getLocksByFilter = `-- name: GetLocksByFilter :many
-SELECT id, name, created_by, created_at, description, access, lock_type, timeout FROM locks
+SELECT id, name, group_id, created_by, created_at, description, access, lock_type, timeout FROM locks
 WHERE
     name ILIKE $1
     AND (
         $2::uuid IS NULL OR
         $2::uuid = created_by
+    ) AND
+    (
+        $3::uuid IS NULL OR
+        $3::uuid = group_id
     )
+LIMIT $5
+OFFSET $4
 `
 
 type GetLocksByFilterParams struct {
 	Name      string     `json:"name"`
 	CreatedBy *uuid.UUID `json:"created_by"`
+	GroupID   *uuid.UUID `json:"group_id"`
+	Offset    int32      `json:"offset"`
+	Limit     int32      `json:"limit"`
+	Type      LockType   `json:"lock_type"`
 }
 
 func (q *Queries) GetLocksByFilter(ctx context.Context, arg GetLocksByFilterParams) ([]Lock, error) {
-	rows, err := q.db.Query(ctx, getLocksByFilter, arg.Name, arg.CreatedBy)
+	rows, err := q.db.Query(ctx, getLocksByFilter,
+		arg.Name,
+		arg.CreatedBy,
+		arg.GroupID,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +152,7 @@ func (q *Queries) GetLocksByFilter(ctx context.Context, arg GetLocksByFilterPara
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.GroupID,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.Description,
@@ -141,7 +178,7 @@ SET
     description = $4
 WHERE
     id = $1
-RETURNING id, name, created_by, created_at, description, access, lock_type, timeout
+RETURNING id, name, group_id, created_by, created_at, description, access, lock_type, timeout
 `
 
 type UpdateLockDetailsParams struct {
@@ -162,6 +199,7 @@ func (q *Queries) UpdateLockDetails(ctx context.Context, arg UpdateLockDetailsPa
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
+		&i.GroupID,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.Description,

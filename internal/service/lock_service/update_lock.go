@@ -3,7 +3,6 @@ package lock_service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
@@ -41,30 +40,11 @@ func (l *LockService) UpdateLock(
 		return
 	}
 
-	if previousLock.Type != lock.Type {
-		err = fmt.Errorf(
-			"%w, cannot change type of a lock",
-			flux_errors.ErrInvalidRequest,
-		)
-		return
-	}
-
-	// check expiry of previous lock
-	if previousLock.Type == database.LockTypeTimer &&
-		time.Now().After(*previousLock.Timeout) {
-		err = fmt.Errorf(
-			"%w, lock is already expired, create a new one",
-			flux_errors.ErrInvalidRequest,
-		)
-		return
-	}
-
 	// validate new lock
-	err = validateLock(lock)
+	err = l.validateLockUpdate(previousLock, lock)
 	if err != nil {
 		return
 	}
-
 
 	// update the lock
 	dbLock, err := l.DB.UpdateLockDetails(
@@ -88,4 +68,25 @@ func (l *LockService) UpdateLock(
 	}
 
 	return dbLockToServiceLock(dbLock), nil
+}
+
+func (l *LockService) validateLockUpdate(
+	previousLock FluxLock,
+	newLock FluxLock,
+) error {
+	if previousLock.Type != newLock.Type {
+		return fmt.Errorf(
+			"%w, cannot change lock's type once created",
+			flux_errors.ErrInvalidRequest,
+		)
+	}
+	
+	if previousLock.Type == database.LockTypeTimer {
+		return fmt.Errorf(
+			"%w, cannot update a timer lock",
+			flux_errors.ErrInvalidRequest,
+		)
+	}
+
+	return validateManualLock(newLock)
 }

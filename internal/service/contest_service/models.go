@@ -16,10 +16,7 @@ type ContestService struct {
 }
 
 type ContestProblems struct {
-	RandomProblems          int              `json:"random_problems" validate:"numeric,min=0"`
-	RandomProblemsMinRating int              `json:"random_problems_min_rating" validate:"numeric,min=800"`
-	RandomProblemsMaxRating int              `json:"random_problems_max_rating" validate:"numeric,min=3000"`
-	Problems                []ContestProblem `json:"problems"`
+	Problems []ContestProblem `json:"problems"`
 }
 
 type ContestProblem struct {
@@ -30,7 +27,7 @@ type ContestProblem struct {
 type Contest struct {
 	ID          uuid.UUID `json:"contest_id"`
 	Title       string    `json:"title" validate:"required,min=5,max=100"`
-	StartTime   time.Time `json:"start_time"`
+	LockId      uuid.UUID `json:"lock_id"`
 	EndTime     time.Time `json:"end_time"`
 	IsPublished bool      `json:"is_published"`
 }

@@ -16,6 +16,7 @@ type LockService struct {
 type FluxLock struct {
 	ID          uuid.UUID             `json:"lock_id"`
 	Name        string                `json:"name" validate:"min=4"`
+	GroupID     *uuid.UUID            `json:"group_id"`
 	CreatedBy   uuid.UUID             `json:"created_by"`
 	Type        database.LockType     `json:"lock_type" validate:"oneof=timer manual"`
 	CreatedAt   time.Time             `json:"created_at"`
@@ -25,7 +26,10 @@ type FluxLock struct {
 }
 
 type GetLocksRequest struct {
-	LockName        string `json:"lock_name"`
-	CreatorUserName string `json:"creator_user_name"`
-	CreatorRollNo   string `json:"creator_roll_no"`
+	LockName        string  `json:"lock_name"`
+	CreatorUserName string  `json:"creator_user_name"`
+	CreatorRollNo   string  `json:"creator_roll_no"`
+	PageNumber      int32   `json:"page_number" validate:"min=1,numeric"`
+	PageSize        int32   `json:"page_size" validate:"min=1,max=100,numeric"`
+	GroupId         *string `json:"group_id"`
 }

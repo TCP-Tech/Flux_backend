@@ -131,6 +131,7 @@ type ContestRegisteredUser struct {
 type Lock struct {
 	ID          uuid.UUID  `json:"id"`
 	Name        string     `json:"name"`
+	GroupID     *uuid.UUID `json:"group_id"`
 	CreatedBy   uuid.UUID  `json:"created_by"`
 	CreatedAt   time.Time  `json:"created_at"`
 	Description string     `json:"description"`

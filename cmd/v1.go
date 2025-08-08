@@ -10,18 +10,33 @@ func NewV1Router() *chi.Mux {
 
 	// configure all endpoints
 	v1.Get("/healthz", middleware.JWTMiddleware(apiConfig.HandlerReadiness))
+
+	// auth layer
+	v1.Get("/auth/signup", apiConfig.HandlerSignUpSendMail)
 	v1.Post("/auth/signup", apiConfig.HandlerSignUp)
 	v1.Post("/auth/login", apiConfig.HandlerLogin)
-	v1.Get("/auth/signup", apiConfig.HandlerSignUpSendMail)
 	v1.Get("/auth/reset-password", apiConfig.HandlerResetPasswordSendMail)
 	v1.Post("/auth/reset-password", apiConfig.HandlerResetPassword)
-	v1.Post("/problems", middleware.JWTMiddleware(apiConfig.HandlerAddProblem))
-	v1.Put("/problems", middleware.JWTMiddleware(apiConfig.HandlerUpdateProblem))
+
+	// locks layer
+	// get locks
+	v1.Get("/locks", middleware.JWTMiddleware(apiConfig.HandlerGetLockById))
+	v1.Post("/locks/search", middleware.JWTMiddleware(apiConfig.HandlerGetLocksByFilter))
+	// create lock
+	v1.Post("/locks", middleware.JWTMiddleware(apiConfig.HandlerCreateLock))
+	// update lock
+	v1.Put("/locks", middleware.JWTMiddleware(apiConfig.HandlerUpdateLock))
+	// delete lock
+	v1.Delete("/locks", middleware.JWTMiddleware(apiConfig.HanlderDeleteLockById))
+
+	// problems layer
+	// search
 	v1.Get("/problems", middleware.JWTMiddleware(apiConfig.HandlerGetProblemById))
 	v1.Post("/problems/search", middleware.JWTMiddleware(apiConfig.HandlerGetProblemsByFilters))
-	v1.Post("/locks", middleware.JWTMiddleware(apiConfig.HandlerCreateLock))
-	v1.Get("/locks", middleware.JWTMiddleware(apiConfig.HandlerGetLocksByFilter))
-	v1.Put("/locks", middleware.JWTMiddleware(apiConfig.HandlerUpdateLock))
-	v1.Delete("/locks", middleware.JWTMiddleware(apiConfig.HanlderDeleteLockById))
+	// add
+	v1.Post("/problems", middleware.JWTMiddleware(apiConfig.HandlerAddProblem))
+	// update
+	v1.Put("/problems", middleware.JWTMiddleware(apiConfig.HandlerUpdateProblem))
+
 	return v1
 }
