@@ -109,6 +109,79 @@ func (q *Queries) GetUserByUserName(ctx context.Context, userName string) (User,
 	return i, err
 }
 
+const getUserIDByUserName = `-- name: GetUserIDByUserName :one
+SELECT id from users WHERE user_name=$1
+`
+
+func (q *Queries) GetUserIDByUserName(ctx context.Context, userName string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getUserIDByUserName, userName)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const getUsersByFilters = `-- name: GetUsersByFilters :many
+SELECT id, user_name, roll_no FROM users
+WHERE 
+    (
+        $1::uuid[] IS NULL OR
+        cardinality($1::uuid[]) = 0 OR
+        id = ANY($1::uuid[])
+    ) AND
+    (
+        $2::text[] IS NULL OR
+        cardinality($2::text[]) = 0 OR
+        user_name = ANY($2::text[])
+    ) AND
+    (
+        $3::text[] IS NULL OR
+        cardinality($3::text[]) = 0 OR
+        roll_no = ANY($3::text[])
+    )
+LIMIT $5
+OFFSET $4
+`
+
+type GetUsersByFiltersParams struct {
+	UserIds   []uuid.UUID `json:"user_ids"`
+	UserNames []string    `json:"user_names"`
+	RollNos   []string    `json:"roll_nos"`
+	Offset    int32       `json:"offset"`
+	Limit     int32       `json:"limit"`
+}
+
+type GetUsersByFiltersRow struct {
+	ID       uuid.UUID `json:"id"`
+	UserName string    `json:"user_name"`
+	RollNo   string    `json:"roll_no"`
+}
+
+func (q *Queries) GetUsersByFilters(ctx context.Context, arg GetUsersByFiltersParams) ([]GetUsersByFiltersRow, error) {
+	rows, err := q.db.Query(ctx, getUsersByFilters,
+		arg.UserIds,
+		arg.UserNames,
+		arg.RollNos,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUsersByFiltersRow
+	for rows.Next() {
+		var i GetUsersByFiltersRow
+		if err := rows.Scan(&i.ID, &i.UserName, &i.RollNo); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUsersCountByUserName = `-- name: GetUsersCountByUserName :one
 SELECT COUNT(*) FROM users WHERE user_name = $1
 `
@@ -118,6 +191,17 @@ func (q *Queries) GetUsersCountByUserName(ctx context.Context, userName string) 
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const isUserIDValid = `-- name: IsUserIDValid :one
+SELECT EXISTS(SELECT id from users WHERE id=$1)
+`
+
+func (q *Queries) IsUserIDValid(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isUserIDValid, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const resetPassword = `-- name: ResetPassword :exec

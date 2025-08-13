@@ -33,6 +33,7 @@ func (p *ProblemService) GetProblemById(
 				flux_errors.ErrNotFound,
 			)
 		}
+		log.Error(err)
 		return Problem{}, fmt.Errorf(
 			"%w, cannot fetch problem with id %v, %w",
 			flux_errors.ErrInternal,
@@ -42,26 +43,30 @@ func (p *ProblemService) GetProblemById(
 	}
 
 	// authorize
-	if dbProblem.Access != nil {
-		access := user_service.UserRole(*dbProblem.Access)
-		accessErr := p.UserServiceConfig.AuthorizeUserRole(
+	if dbProblem.LockAccess != nil {
+		err = p.LockServiceConfig.AuthorizeLock(
 			ctx,
-			claims.UserId,
-			access,
+			dbProblem.LockTimeout,
+			user_service.UserRole(*dbProblem.LockAccess),
 			fmt.Sprintf(
 				"user %s tried to access unauthorized problem with id %v",
 				claims.UserName,
 				id,
 			),
 		)
-		if accessErr != nil {
-			return Problem{}, fmt.Errorf(
-				"%w, no problem exist with the given id",
-				flux_errors.ErrNotFound,
-			)
+		if err != nil {
+			if errors.Is(err, flux_errors.ErrUnAuthorized) {
+				err = fmt.Errorf(
+					"%w, problem with id %v not found",
+					flux_errors.ErrNotFound,
+					id,
+				)
+			}
+			return Problem{}, err
 		}
 	}
 
+	// convert to service problem
 	serviceProbData, err := getServiceProblemData(
 		dbProblem.ExampleTestcases,
 		dbProblem.Platform,
@@ -77,8 +82,8 @@ func (p *ProblemService) GetProblemById(
 		InputFormat:    dbProblem.InputFormat,
 		OutputFormat:   dbProblem.OutputFormat,
 		Notes:          dbProblem.Notes,
-		MemoryLimitKB:  dbProblem.MemoryLimitKb,
-		TimeLimitMS:    dbProblem.TimeLimitMs,
+		MemoryLimitKb:  dbProblem.MemoryLimitKb,
+		TimeLimitMs:    dbProblem.TimeLimitMs,
 		Difficulty:     dbProblem.Difficulty,
 		SubmissionLink: dbProblem.SubmissionLink,
 		CreatedBy:      dbProblem.CreatedBy,
@@ -92,7 +97,7 @@ func (p *ProblemService) GetProblemById(
 func (p *ProblemService) GetProblemsByFilters(
 	ctx context.Context,
 	request GetProblemsRequest,
-) ([]ProblemMetaData, error) {
+) (map[int32]ProblemMetaData, error) {
 	// validate
 	valErr := service.ValidateInput(request)
 	if valErr != nil {
@@ -105,7 +110,11 @@ func (p *ProblemService) GetProblemsByFilters(
 	// get creator
 	var createdBy *uuid.UUID
 	if request.CreatorRollNo != "" || request.CreatorUserName != "" {
-		user, err := p.UserServiceConfig.FetchUserFromDb(ctx, request.CreatorUserName, request.CreatorRollNo)
+		user, err := p.UserServiceConfig.GetUserByUserNameOrRollNo(
+			ctx,
+			request.CreatorUserName,
+			request.CreatorRollNo,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -115,10 +124,12 @@ func (p *ProblemService) GetProblemsByFilters(
 	// fetch problems from db
 	rows, fetchErr := p.DB.GetProblemsByFilters(
 		ctx, database.GetProblemsByFiltersParams{
-			Title:     fmt.Sprintf("%%%s%%", request.Title),
-			Offset:    offset,
-			Limit:     request.PageSize,
-			CreatedBy: createdBy,
+			TitleSearch: request.Title,
+			ProblemIds:  request.ProblemIDs,
+			LockID:      request.LockID,
+			Offset:      offset,
+			Limit:       request.PageSize,
+			CreatedBy:   createdBy,
 		})
 	if fetchErr != nil {
 		err := fmt.Errorf(
@@ -129,31 +140,27 @@ func (p *ProblemService) GetProblemsByFilters(
 		log.WithField("filters", request).Error(err)
 		return nil, err
 	}
-	log.Info(rows)
-
-	// fetch claims to access userID
-	claims, err := service.GetClaimsFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	// convert to meta data
-	problemsMetaData := make([]ProblemMetaData, 0, len(rows))
+	res := make(map[int32]ProblemMetaData)
 	for _, row := range rows {
 		// authorize user for the problem
 		// only a handful of people are assigned roles and
 		// once fetched they are stored in cache, so better loop and authorize
 		// instead of filtering them in the complex sql query
+		var lockAccess *user_service.UserRole
 		if row.LockAccess != nil {
-			accessErr := p.UserServiceConfig.AuthorizeUserRole(
+			err := p.LockServiceConfig.AuthorizeLock(
 				ctx,
-				claims.UserId,
+				row.LockTimeout,
 				user_service.UserRole(*row.LockAccess),
 				"",
 			)
-			if accessErr != nil {
+			if err != nil {
 				continue
 			}
+			la := user_service.UserRole(*row.LockAccess)
+			lockAccess = &la
 		}
 
 		// convert platform
@@ -165,15 +172,19 @@ func (p *ProblemService) GetProblemsByFilters(
 
 		// append problem
 		pmd := ProblemMetaData{
-			ProblemId:  row.ID,
-			Title:      row.Title,
-			Difficulty: row.Difficulty,
-			Platform:   platform,
-			CreatedBy:  row.CreatedBy,
-			CreatedAt:  row.CreatedAt,
+			ProblemId:   row.ID,
+			Title:       row.Title,
+			Difficulty:  row.Difficulty,
+			Platform:    platform,
+			CreatedBy:   row.CreatedBy,
+			CreatedAt:   row.CreatedAt,
+			LockID:      row.LockID,
+			LockGroupID: row.LockGroupID,
+			LockAccess:  lockAccess,
+			LockTimeout: row.LockTimeout,
 		}
-		problemsMetaData = append(problemsMetaData, pmd)
+		res[row.ID] = pmd
 	}
 
-	return problemsMetaData, nil
+	return res, nil
 }

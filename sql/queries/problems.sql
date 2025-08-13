@@ -41,7 +41,8 @@ SELECT
     problems.*,
 
     -- Select only the 'access' column from the 'locks' table
-    locks.access
+    locks.access as lock_access,
+    locks.timeout as lock_timeout
 FROM
     problems
 LEFT JOIN
@@ -72,31 +73,53 @@ RETURNING *;
 
 -- name: GetProblemsByFilters :many
 SELECT
-    -- Columns from the 'problems' table
-    problems.id,
-    problems.title,
-    problems.difficulty,
-    problems.platform,
-    problems.created_by,
-    problems.created_at,
-
-    -- Columns from the 'locks' table, with aliases
-    locks.access as lock_access
+    p.id,
+    p.title,
+    p.difficulty,
+    p.platform,
+    p.created_by,   
+    p.created_at,
+    l.id as lock_id,
+    l.group_id as lock_group_id,
+    l.timeout as lock_timeout,
+    l.access as lock_access
 FROM
-    problems
+    problems AS p
 LEFT JOIN
-    locks ON problems.lock_id = locks.id
+    locks AS l ON p.lock_id = l.id
 WHERE
-    -- Mandatory case-insensitive search on the problem title
-    problems.title ILIKE sqlc.arg('title')  AND
+    -- Optional filter by a list of problem IDs
+    -- This checks if the input slice is empty. If it is, the condition is true.
+    -- If not empty, it checks if the problem ID is in the slice.
     (
-        -- Optional filter by the user who created the problem
-        problems.created_by = sqlc.narg('created_by')::uuid OR
-        sqlc.narg('created_by')::uuid IS NULL
+        (sqlc.slice('problem_ids')::int[]) IS NULL OR
+        cardinality(sqlc.slice('problem_ids')::int[]) = 0 OR
+        p.id = ANY(sqlc.slice('problem_ids')::int[])
     )
+AND
+    -- Optional filter by lock_id
+    (
+        sqlc.narg('lock_id')::uuid IS NULL OR
+        p.lock_id = sqlc.narg('lock_id')::uuid
+    )
+AND
+    -- Optional filter by creator
+    (
+        sqlc.narg('created_by')::uuid IS NULL OR
+        p.created_by = sqlc.narg('created_by')::uuid
+    )
+AND
+    -- Title search with wildcards handled in SQL
+    p.title ILIKE '%' || sqlc.arg('title_search')::text || '%'
 ORDER BY
-    problems.created_at DESC
+    p.created_at DESC
 LIMIT
     sqlc.arg('limit')
 OFFSET
     sqlc.arg('offset');
+
+-- name: GetProblemAuth :one
+SELECT locks.id, locks.access, locks.timeout
+FROM problems
+LEFT JOIN locks ON problems.lock_id = locks.id
+WHERE problems.id = $1;

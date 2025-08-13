@@ -29,7 +29,6 @@ func (l *LockService) UpdateLock(
 	err = l.UserServiceConfig.AuthorizeCreatorAccess(
 		ctx,
 		previousLock.CreatedBy,
-		claims.UserId,
 		fmt.Sprintf(
 			"user %s tried to update lock with id %v",
 			claims.UserName,

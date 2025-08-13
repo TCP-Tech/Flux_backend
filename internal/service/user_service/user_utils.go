@@ -11,24 +11,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
 )
-
-func (u *UserService) FetchUserFromDb(
-	ctx context.Context,
-	userName string,
-	rollNo string,
-) (dbUser database.User, err error) {
-	if userName == "" && rollNo == "" {
-		err = fmt.Errorf("%w, either user_name or roll_no must be provided", flux_errors.ErrInvalidRequest)
-		return
-	}
-	if userName != "" {
-		dbUser, err = u.FetchUserByUserName(ctx, userName)
-	} else {
-		dbUser, err = u.FetchUserByRollNo(ctx, rollNo)
-	}
-	return
-}
 
 func (u *UserService) FetchUserByUserName(
 	ctx context.Context,
@@ -95,33 +79,47 @@ func (u *UserService) FetchUserRoles(ctx context.Context, userId uuid.UUID) ([]s
 
 func (u *UserService) AuthorizeUserRole(
 	ctx context.Context,
-	userId uuid.UUID,
 	role UserRole,
 	warnMessage string,
 ) (err error) {
-	roles, err := u.FetchUserRoles(ctx, userId)
+	// get claims
+	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
 		return err
 	}
+
+	// get roles
+	roles, err := u.FetchUserRoles(ctx, claims.UserId)
+	if err != nil {
+		return err
+	}
+
+	// access_role must be present in user_roles
 	if slices.Contains(roles, string(role)) {
 		return nil
 	}
+
+	// warn
 	if warnMessage != "" {
 		log.Warn(warnMessage)
 	}
+
 	return flux_errors.ErrUnAuthorized
 }
 
 func (u *UserService) AuthorizeCreatorAccess(
 	ctx context.Context,
 	creatorId uuid.UUID,
-	userId uuid.UUID,
 	warnMessage string,
 ) error {
+	claims, err := service.GetClaimsFromContext(ctx)
+	if err != nil {
+		return err
+	}
+
 	// check if they are hc
-	err := u.AuthorizeUserRole(
+	err = u.AuthorizeUserRole(
 		ctx,
-		userId,
 		RoleHC,
 		"",
 	)
@@ -129,20 +127,58 @@ func (u *UserService) AuthorizeCreatorAccess(
 		return nil
 	}
 
-	// check if they are manager currently
-	err = u.AuthorizeUserRole(
-		ctx,
-		userId,
-		RoleManager,
-		warnMessage,
-	)
-	if err != nil {
-		return err
-	}
-
-	if userId != creatorId {
+	if claims.UserId != creatorId {
 		return flux_errors.ErrUnAuthorized
 	}
 
 	return nil
+}
+
+// only 3 functions
+// a little duplication is better than a little abstraction
+func (u *UserService) IsUserIDValid(
+	ctx context.Context,
+	userID uuid.UUID,
+) (bool, error) {
+	exist, err := u.DB.IsUserIDValid(
+		ctx, userID,
+	)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot check if user exist with id %v",
+			flux_errors.ErrInternal,
+			userID,
+		)
+		log.Error(err)
+		return false, err
+	}
+
+	return exist, nil
+}
+
+func (u *UserService) GetUserIDByUserName(
+	ctx context.Context,
+	userName string,
+) (uuid.UUID, error) {
+	userID, err := u.DB.GetUserIDByUserName(ctx, userName)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = fmt.Errorf(
+				"%w, user %s does not exist",
+				flux_errors.ErrInvalidRequest,
+				userName,
+			)
+			return uuid.Nil, err
+		}
+		err = fmt.Errorf(
+			"%w, cannot fetch userId of user %s, %w",
+			flux_errors.ErrInternal,
+			userName,
+			err,
+		)
+		log.Error(err)
+		return uuid.Nil, err
+	}
+
+	return userID, nil
 }

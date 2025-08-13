@@ -20,6 +20,7 @@ func (a *Api) HandlerResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// extract the auth token from header
 	verificationToken, err := extractAuthToken(r.Header)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)

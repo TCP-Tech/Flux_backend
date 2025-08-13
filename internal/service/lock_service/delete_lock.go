@@ -29,7 +29,6 @@ func (l *LockService) DeleteLock(ctx context.Context, lockId uuid.UUID) error {
 	err = l.UserServiceConfig.AuthorizeCreatorAccess(
 		ctx,
 		lock.CreatedBy,
-		claims.UserId,
 		fmt.Sprintf(
 			"user %s tried to delete lock with id %v",
 			claims.UserName,

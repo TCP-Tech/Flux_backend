@@ -36,9 +36,9 @@ type Problem struct {
 	OutputFormat   string            `json:"output_format" validate:"required"`
 	ExampleTCs     *ExampleTestCases `json:"example_test_cases"`
 	Notes          *string           `json:"notes"`
-	MemoryLimitKB  int32             `json:"memory_limit_kb" validate:"required,numeric"`
-	TimeLimitMS    int32             `json:"time_limit_ms" validate:"required,numeric"`
-	Difficulty     int32             `json:"difficulty" validate:"required,numeric,min=800,max=3000"`
+	MemoryLimitKb  int32             `json:"memory_limit_kb" validate:"required,min=1024"`
+	TimeLimitMs    int32             `json:"time_limit_ms" validate:"required,min=500"`
+	Difficulty     int32             `json:"difficulty" validate:"required,min=800,max=3000"`
 	SubmissionLink *string           `json:"submission_link" valdidate:"url"`
 	Platform       *Platform         `json:"platform" validate:"omitempty,oneof=codeforces"`
 	CreatedBy      uuid.UUID         `json:"created_by"`
@@ -62,10 +62,14 @@ type serviceProblemData struct {
 type GetProblemsRequest struct {
 	// title substring that might be in problem title
 	Title string `json:"title"`
+	// problems with certain ids
+	ProblemIDs []int32 `json:"problem_ids"`
+	// problems associated with a lock
+	LockID *uuid.UUID `json:"lock_id"`
 	// page number
 	PageNumber int32 `json:"page_number" validate:"numeric,min=1"`
 	// size of each page
-	PageSize int32 `json:"page_size" validate:"numeric,min=1,max=100"`
+	PageSize int32 `json:"page_size" validate:"numeric,min=0,max=10000"`
 	// filter for the problem created
 	CreatorUserName string `json:"creator_user_name"`
 	CreatorRollNo   string `json:"creator_roll_number"`
@@ -79,4 +83,10 @@ type ProblemMetaData struct {
 	Platform   *Platform `json:"platform"`
 	CreatedBy  uuid.UUID `json:"created_by"`
 	CreatedAt  time.Time `json:"created_at"`
+
+	// field used only for internal purpose
+	LockID      *uuid.UUID             `json:"-"`
+	LockGroupID *uuid.UUID             `json:"-"`
+	LockTimeout *time.Time             `json:"-"`
+	LockAccess  *user_service.UserRole `json:"-"`
 }

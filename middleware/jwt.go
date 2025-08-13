@@ -26,7 +26,10 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			if err == http.ErrNoCookie {
 				// This is typical if the user is not logged in or their session expired.
 				log.Errorf("Error: JWT cookie '%s' not found.\n", KeyJwtSessionCookieName)
-				http.Error(w, "Authentication required: JWT cookie not found.", http.StatusUnauthorized)
+				http.Error(
+					w, "Authentication required: JWT cookie not found.",
+					http.StatusUnauthorized,
+				)
 				return
 			}
 			// Other errors, potentially malformed cookie header
@@ -41,20 +44,27 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		jwt_secret := os.Getenv(service.KeyJWTSecret)
 		if jwt_secret == "" {
 			log.Error("jwt secret key is not found")
-			http.Error(w, "internal error. please try again later", http.StatusInternalServerError)
+			http.Error(
+				w, "internal error. please try again later",
+				http.StatusInternalServerError,
+			)
 			return
 		}
 
 		// parse the token
 		claims := service.UserCredentialClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, &claims, func(t *jwt.Token) (any, error) {
-			// Check the signing method to prevent algorithm confusion
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				log.Errorf("Unexpected signing method: %v", t.Header["alg"])
-				return nil, jwt.ErrSignatureInvalid
-			}
-			return []byte(jwt_secret), nil
-		})
+		token, err := jwt.ParseWithClaims(
+			tokenString, &claims,
+			// function to extract the jwt_secret to parse the token
+			func(t *jwt.Token) (any, error) {
+				// Check the signing method to prevent algorithm confusion
+				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+					log.Errorf("Unexpected signing method: %v", t.Header["alg"])
+					return nil, jwt.ErrSignatureInvalid
+				}
+				return []byte(jwt_secret), nil
+			},
+		)
 
 		// validate the token
 		if err != nil || !token.Valid {
@@ -69,8 +79,8 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		// log the endpoint user tyring to access
 		log.WithFields(log.Fields{
-			"user_id": claims.UserId,
-		}).Infof("accessing %v endpoint under %v method", r.URL.Path, r.Method)
+			"user_name": claims.UserName,
+		}).Infof("accessing %v[%v] endpoint", r.Method, r.URL.Path)
 
 		// pass the claims with context
 		ctx := context.WithValue(r.Context(), service.KeyCtxUserCredClaims, claims)

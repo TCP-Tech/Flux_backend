@@ -18,7 +18,7 @@ func (a *AuthService) ResetPasswordSendMail(
 	rollNo string,
 ) error {
 	// fetch the user from db
-	user, err := a.UserConfig.FetchUserFromDb(ctx, userName, rollNo)
+	user, err := a.UserConfig.GetUserByUserNameOrRollNo(ctx, userName, rollNo)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (a *AuthService) ResetPassword(
 	)
 
 	// fetch user from db
-	user, err := a.UserConfig.FetchUserFromDb(ctx, userName, rollNo)
+	user, err := a.UserConfig.GetUserByUserNameOrRollNo(ctx, userName, rollNo)
 	if err != nil {
 		resetLogger.Errorf(
 			"tried to reset password but error occurred while fetching user from db, %v",

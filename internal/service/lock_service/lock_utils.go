@@ -149,15 +149,46 @@ func dbLockToServiceLock(dbLock database.Lock) FluxLock {
 func (l *LockService) IsLockExpired(
 	lock FluxLock,
 	delayMinutes int32,
-) bool {
+) (bool, error) {
 	if lock.Type == database.LockTypeManual {
-		return false
+		return false, nil
+	}
+
+	// very rare, but for safety purpose
+	if lock.Timeout == nil {
+		return false, fmt.Errorf(
+			"%w, timer lock has timeout as nil",
+			flux_errors.ErrInternal,
+		)
 	}
 
 	if time.Now().Add(
 		time.Minute * time.Duration(delayMinutes)).After(*lock.Timeout) {
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
+}
+
+func (l *LockService) AuthorizeLock(
+	ctx context.Context,
+	timeout *time.Time,
+	access user_service.UserRole,
+	warnMessage string,
+) error {
+	// timer lock expired
+	if timeout != nil {
+		if time.Now().After(*timeout) {
+			return nil
+		}
+	}
+
+	// authorize
+	err := l.UserServiceConfig.AuthorizeUserRole(
+		ctx,
+		access,
+		warnMessage,
+	)
+
+	return err
 }

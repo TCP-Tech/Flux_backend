@@ -38,52 +38,32 @@ func (q *Queries) AddProblemToContest(ctx context.Context, arg AddProblemToConte
 	return i, err
 }
 
-const addUserToContest = `-- name: AddUserToContest :one
-INSERT INTO contest_registered_users (
-    user_id,
-    contest_id
-) VALUES (
-    $1,
-    $2
-)
-RETURNING user_id, contest_id
-`
-
-type AddUserToContestParams struct {
-	UserID    uuid.UUID `json:"user_id"`
-	ContestID uuid.UUID `json:"contest_id"`
-}
-
-func (q *Queries) AddUserToContest(ctx context.Context, arg AddUserToContestParams) (ContestRegisteredUser, error) {
-	row := q.db.QueryRow(ctx, addUserToContest, arg.UserID, arg.ContestID)
-	var i ContestRegisteredUser
-	err := row.Scan(&i.UserID, &i.ContestID)
-	return i, err
-}
-
 const createContest = `-- name: CreateContest :one
-INSERT INTO contest (
+INSERT INTO contests (
     title,
     created_by,
     start_time,
     end_time,
-    is_published
+    is_published,
+    lock_id
 ) VALUES (
     $1,
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 )
 RETURNING id, title, created_by, created_at, updated_at, start_time, end_time, is_published, lock_id
 `
 
 type CreateContestParams struct {
-	Title       string    `json:"title"`
-	CreatedBy   uuid.UUID `json:"created_by"`
-	StartTime   time.Time `json:"start_time"`
-	EndTime     time.Time `json:"end_time"`
-	IsPublished bool      `json:"is_published"`
+	Title       string     `json:"title"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	StartTime   *time.Time `json:"start_time"`
+	EndTime     time.Time  `json:"end_time"`
+	IsPublished bool       `json:"is_published"`
+	LockID      *uuid.UUID `json:"lock_id"`
 }
 
 func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (Contest, error) {
@@ -93,6 +73,7 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 		arg.StartTime,
 		arg.EndTime,
 		arg.IsPublished,
+		arg.LockID,
 	)
 	var i Contest
 	err := row.Scan(
@@ -124,5 +105,281 @@ DELETE FROM contest_registered_users WHERE contest_id = $1
 
 func (q *Queries) DeleteUsersByContestId(ctx context.Context, contestID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteUsersByContestId, contestID)
+	return err
+}
+
+const getContestByID = `-- name: GetContestByID :one
+SELECT 
+    contests.id, contests.title, contests.created_by, contests.created_at, contests.updated_at, contests.start_time, contests.end_time, contests.is_published, contests.lock_id,
+    locks.group_id as lock_group_id,
+    locks.timeout as lock_timeout,
+    locks.access
+FROM contests
+LEFT JOIN locks ON
+contests.lock_id = locks.id
+WHERE contests.id=$1
+`
+
+type GetContestByIDRow struct {
+	ID          uuid.UUID  `json:"id"`
+	Title       string     `json:"title"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	StartTime   *time.Time `json:"start_time"`
+	EndTime     time.Time  `json:"end_time"`
+	IsPublished bool       `json:"is_published"`
+	LockID      *uuid.UUID `json:"lock_id"`
+	LockGroupID *uuid.UUID `json:"lock_group_id"`
+	LockTimeout *time.Time `json:"lock_timeout"`
+	Access      *string    `json:"access"`
+}
+
+func (q *Queries) GetContestByID(ctx context.Context, id uuid.UUID) (GetContestByIDRow, error) {
+	row := q.db.QueryRow(ctx, getContestByID, id)
+	var i GetContestByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartTime,
+		&i.EndTime,
+		&i.IsPublished,
+		&i.LockID,
+		&i.LockGroupID,
+		&i.LockTimeout,
+		&i.Access,
+	)
+	return i, err
+}
+
+const getContestProblemsByContestID = `-- name: GetContestProblemsByContestID :many
+SELECT contest_id, problem_id, score FROM contest_problems WHERE contest_id=$1
+`
+
+func (q *Queries) GetContestProblemsByContestID(ctx context.Context, contestID uuid.UUID) ([]ContestProblem, error) {
+	rows, err := q.db.Query(ctx, getContestProblemsByContestID, contestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ContestProblem
+	for rows.Next() {
+		var i ContestProblem
+		if err := rows.Scan(&i.ContestID, &i.ProblemID, &i.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getContestUsers = `-- name: GetContestUsers :many
+SELECT user_id FROM contest_registered_users WHERE contest_id=$1
+`
+
+func (q *Queries) GetContestUsers(ctx context.Context, contestID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, getContestUsers, contestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getContestsByFilters = `-- name: GetContestsByFilters :many
+SELECT
+    c.id,
+    c.title,
+    c.created_by,
+    c.created_at,
+    c.updated_at,
+    c.start_time,
+    c.end_time,
+    c.is_published,
+    c.lock_id,
+    l.access as lock_access,
+    l.timeout as lock_timeout,
+    l.group_id as lock_group_id
+FROM
+    contests AS c
+LEFT JOIN
+    locks AS l ON c.lock_id = l.id
+WHERE
+    -- Optional filter by a list of contest IDs
+    (cardinality($1::uuid[]) = 0 OR c.id = ANY($1::uuid[]))
+AND
+    -- Optional filter by published status
+    ($2::boolean IS NULL OR c.is_published = $2::boolean)
+AND
+    -- Optional filter by lock_id
+    ($3::uuid IS NULL OR c.lock_id = $3::uuid)
+AND
+    -- Title search with wildcards handled in SQL
+    c.title ILIKE '%' || $4::text || '%'
+ORDER BY
+    c.created_at DESC
+LIMIT
+    $6
+OFFSET
+    $5
+`
+
+type GetContestsByFiltersParams struct {
+	ContestIds  []uuid.UUID `json:"contest_ids"`
+	IsPublished *bool       `json:"is_published"`
+	LockID      *uuid.UUID  `json:"lock_id"`
+	TitleSearch string      `json:"title_search"`
+	Offset      int32       `json:"offset"`
+	Limit       int32       `json:"limit"`
+}
+
+type GetContestsByFiltersRow struct {
+	ID          uuid.UUID  `json:"id"`
+	Title       string     `json:"title"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	StartTime   *time.Time `json:"start_time"`
+	EndTime     time.Time  `json:"end_time"`
+	IsPublished bool       `json:"is_published"`
+	LockID      *uuid.UUID `json:"lock_id"`
+	LockAccess  *string    `json:"lock_access"`
+	LockTimeout *time.Time `json:"lock_timeout"`
+	LockGroupID *uuid.UUID `json:"lock_group_id"`
+}
+
+func (q *Queries) GetContestsByFilters(ctx context.Context, arg GetContestsByFiltersParams) ([]GetContestsByFiltersRow, error) {
+	rows, err := q.db.Query(ctx, getContestsByFilters,
+		arg.ContestIds,
+		arg.IsPublished,
+		arg.LockID,
+		arg.TitleSearch,
+		arg.Offset,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetContestsByFiltersRow
+	for rows.Next() {
+		var i GetContestsByFiltersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StartTime,
+			&i.EndTime,
+			&i.IsPublished,
+			&i.LockID,
+			&i.LockAccess,
+			&i.LockTimeout,
+			&i.LockGroupID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUserRegisteredContests = `-- name: GetUserRegisteredContests :many
+SELECT contest_id FROM contest_registered_users WHERE user_id=$1
+`
+
+func (q *Queries) GetUserRegisteredContests(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, getUserRegisteredContests, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var contest_id uuid.UUID
+		if err := rows.Scan(&contest_id); err != nil {
+			return nil, err
+		}
+		items = append(items, contest_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const isUserRegisteredInContest = `-- name: IsUserRegisteredInContest :one
+SELECT EXISTS(
+    SELECT contest_id, user_id FROM
+     contest_registered_users WHERE contest_id=$1 AND user_id=$1
+)
+`
+
+func (q *Queries) IsUserRegisteredInContest(ctx context.Context, contestID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isUserRegisteredInContest, contestID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const registerUserToContest = `-- name: RegisterUserToContest :one
+INSERT INTO contest_registered_users (
+    user_id,
+    contest_id
+) VALUES (
+    $1,
+    $2
+)
+RETURNING user_id, contest_id
+`
+
+type RegisterUserToContestParams struct {
+	UserID    uuid.UUID `json:"user_id"`
+	ContestID uuid.UUID `json:"contest_id"`
+}
+
+func (q *Queries) RegisterUserToContest(ctx context.Context, arg RegisterUserToContestParams) (ContestRegisteredUser, error) {
+	row := q.db.QueryRow(ctx, registerUserToContest, arg.UserID, arg.ContestID)
+	var i ContestRegisteredUser
+	err := row.Scan(&i.UserID, &i.ContestID)
+	return i, err
+}
+
+const unRegisterContestUsers = `-- name: UnRegisterContestUsers :exec
+DELETE FROM contest_registered_users WHERE contest_id=$1
+`
+
+func (q *Queries) UnRegisterContestUsers(ctx context.Context, contestID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, unRegisterContestUsers, contestID)
+	return err
+}
+
+const unsetContestProblems = `-- name: UnsetContestProblems :exec
+DELETE FROM contest_problems WHERE contest_id=$1
+`
+
+func (q *Queries) UnsetContestProblems(ctx context.Context, contestID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, unsetContestProblems, contestID)
 	return err
 }

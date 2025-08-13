@@ -112,7 +112,7 @@ func (q *Queries) GetLockGroupTimeout(ctx context.Context, groupID *uuid.UUID) (
 const getLocksByFilter = `-- name: GetLocksByFilter :many
 SELECT id, name, group_id, created_by, created_at, description, access, lock_type, timeout FROM locks
 WHERE
-    name ILIKE $1
+    name ILIKE '%' || $1::text || '%'
     AND (
         $2::uuid IS NULL OR
         $2::uuid = created_by
@@ -126,17 +126,16 @@ OFFSET $4
 `
 
 type GetLocksByFilterParams struct {
-	Name      string     `json:"name"`
+	LockName  string     `json:"lock_name"`
 	CreatedBy *uuid.UUID `json:"created_by"`
 	GroupID   *uuid.UUID `json:"group_id"`
 	Offset    int32      `json:"offset"`
 	Limit     int32      `json:"limit"`
-	Type      LockType   `json:"lock_type"`
 }
 
 func (q *Queries) GetLocksByFilter(ctx context.Context, arg GetLocksByFilterParams) ([]Lock, error) {
 	rows, err := q.db.Query(ctx, getLocksByFilter,
-		arg.Name,
+		arg.LockName,
 		arg.CreatedBy,
 		arg.GroupID,
 		arg.Offset,

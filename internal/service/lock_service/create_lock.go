@@ -26,7 +26,6 @@ func (l *LockService) CreateLock(
 	// authorize user
 	err = l.UserServiceConfig.AuthorizeUserRole(
 		ctx,
-		claims.UserId,
 		user_service.RoleManager,
 		fmt.Sprintf("user %s tried to create a lock", claims.UserName),
 	)

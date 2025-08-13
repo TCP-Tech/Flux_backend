@@ -106,15 +106,15 @@ type Bot struct {
 }
 
 type Contest struct {
-	ID          uuid.UUID `json:"id"`
-	Title       string    `json:"title"`
-	CreatedBy   uuid.UUID `json:"created_by"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	StartTime   time.Time `json:"start_time"`
-	EndTime     time.Time `json:"end_time"`
-	IsPublished bool      `json:"is_published"`
-	LockID      uuid.UUID `json:"lock_id"`
+	ID          uuid.UUID  `json:"id"`
+	Title       string     `json:"title"`
+	CreatedBy   uuid.UUID  `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	StartTime   *time.Time `json:"start_time"`
+	EndTime     time.Time  `json:"end_time"`
+	IsPublished bool       `json:"is_published"`
+	LockID      *uuid.UUID `json:"lock_id"`
 }
 
 type ContestProblem struct {

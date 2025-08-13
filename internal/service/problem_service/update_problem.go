@@ -37,13 +37,14 @@ func (p *ProblemService) UpdateProblem(
 	authErr := p.UserServiceConfig.AuthorizeCreatorAccess(
 		ctx,
 		oldProblem.CreatedBy,
-		claims.UserId,
 		fmt.Sprintf(
 			"user %s tried to update the problem with id %v",
 			claims.UserName,
 			problem.ID,
 		),
 	)
+	// user able to see the problem but
+	// cannot update the problem, so return authErr
 	if authErr != nil {
 		return Problem{}, authErr
 	}
@@ -138,8 +139,8 @@ func getUpdateProblemParams(
 		OutputFormat:     problem.OutputFormat,
 		ExampleTestcases: dbProblemData.exampleTestCases, // Note: Typo in field name, should be ExampleTestcases if that's the intended field
 		Notes:            problem.Notes,
-		MemoryLimitKb:    problem.MemoryLimitKB,
-		TimeLimitMs:      problem.TimeLimitMS,
+		MemoryLimitKb:    problem.MemoryLimitKb,
+		TimeLimitMs:      problem.TimeLimitMs,
 		Difficulty:       problem.Difficulty,
 		SubmissionLink:   problem.SubmissionLink,
 		Platform:         dbProblemData.platformType,

@@ -22,7 +22,7 @@ func (a *AuthService) Login(
 	rememberForMonth bool,
 ) (userLoginResponse UserLoginResponse, tokenString string, tokenExpiry time.Time, err error) {
 	// get user from db
-	user, err := a.UserConfig.FetchUserFromDb(ctx, userName, rollNo)
+	user, err := a.UserConfig.GetUserByUserNameOrRollNo(ctx, userName, rollNo)
 	if err != nil {
 		return
 	}

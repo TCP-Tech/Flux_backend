@@ -114,13 +114,34 @@ func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 Platform) (Pla
 	return column_1, err
 }
 
+const getProblemAuth = `-- name: GetProblemAuth :one
+SELECT locks.id, locks.access, locks.timeout
+FROM problems
+LEFT JOIN locks ON problems.lock_id = locks.id
+WHERE problems.id = $1
+`
+
+type GetProblemAuthRow struct {
+	ID      *uuid.UUID `json:"id"`
+	Access  *string    `json:"access"`
+	Timeout *time.Time `json:"timeout"`
+}
+
+func (q *Queries) GetProblemAuth(ctx context.Context, id int32) (GetProblemAuthRow, error) {
+	row := q.db.QueryRow(ctx, getProblemAuth, id)
+	var i GetProblemAuthRow
+	err := row.Scan(&i.ID, &i.Access, &i.Timeout)
+	return i, err
+}
+
 const getProblemById = `-- name: GetProblemById :one
 SELECT
     -- Explicitly list all columns from 'problems' except 'lock_id'
     problems.id, problems.title, problems.statement, problems.input_format, problems.output_format, problems.example_testcases, problems.notes, problems.memory_limit_kb, problems.time_limit_ms, problems.created_by, problems.last_updated_by, problems.created_at, problems.updated_at, problems.difficulty, problems.submission_link, problems.platform, problems.lock_id,
 
     -- Select only the 'access' column from the 'locks' table
-    locks.access
+    locks.access as lock_access,
+    locks.timeout as lock_timeout
 FROM
     problems
 LEFT JOIN
@@ -147,7 +168,8 @@ type GetProblemByIdRow struct {
 	SubmissionLink   *string          `json:"submission_link"`
 	Platform         NullPlatform     `json:"platform"`
 	LockID           *uuid.UUID       `json:"lock_id"`
-	Access           *string          `json:"access"`
+	LockAccess       *string          `json:"lock_access"`
+	LockTimeout      *time.Time       `json:"lock_timeout"`
 }
 
 func (q *Queries) GetProblemById(ctx context.Context, id int32) (GetProblemByIdRow, error) {
@@ -171,64 +193,88 @@ func (q *Queries) GetProblemById(ctx context.Context, id int32) (GetProblemByIdR
 		&i.SubmissionLink,
 		&i.Platform,
 		&i.LockID,
-		&i.Access,
+		&i.LockAccess,
+		&i.LockTimeout,
 	)
 	return i, err
 }
 
 const getProblemsByFilters = `-- name: GetProblemsByFilters :many
 SELECT
-    -- Columns from the 'problems' table
-    problems.id,
-    problems.title,
-    problems.difficulty,
-    problems.platform,
-    problems.created_by,
-    problems.created_at,
-
-    -- Columns from the 'locks' table, with aliases
-    locks.access as lock_access
+    p.id,
+    p.title,
+    p.difficulty,
+    p.platform,
+    p.created_by,   
+    p.created_at,
+    l.id as lock_id,
+    l.group_id as lock_group_id,
+    l.timeout as lock_timeout,
+    l.access as lock_access
 FROM
-    problems
+    problems AS p
 LEFT JOIN
-    locks ON problems.lock_id = locks.id
+    locks AS l ON p.lock_id = l.id
 WHERE
-    -- Mandatory case-insensitive search on the problem title
-    problems.title ILIKE $1  AND
+    -- Optional filter by a list of problem IDs
+    -- This checks if the input slice is empty. If it is, the condition is true.
+    -- If not empty, it checks if the problem ID is in the slice.
     (
-        -- Optional filter by the user who created the problem
-        problems.created_by = $2::uuid OR
-        $2::uuid IS NULL
+        ($1::int[]) IS NULL OR
+        cardinality($1::int[]) = 0 OR
+        p.id = ANY($1::int[])
     )
+AND
+    -- Optional filter by lock_id
+    (
+        $2::uuid IS NULL OR
+        p.lock_id = $2::uuid
+    )
+AND
+    -- Optional filter by creator
+    (
+        $3::uuid IS NULL OR
+        p.created_by = $3::uuid
+    )
+AND
+    -- Title search with wildcards handled in SQL
+    p.title ILIKE '%' || $4::text || '%'
 ORDER BY
-    problems.created_at DESC
+    p.created_at DESC
 LIMIT
-    $4
+    $6
 OFFSET
-    $3
+    $5
 `
 
 type GetProblemsByFiltersParams struct {
-	Title     string     `json:"title"`
-	CreatedBy *uuid.UUID `json:"created_by"`
-	Offset    int32      `json:"offset"`
-	Limit     int32      `json:"limit"`
+	ProblemIds  []int32    `json:"problem_ids"`
+	LockID      *uuid.UUID `json:"lock_id"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	TitleSearch string     `json:"title_search"`
+	Offset      int32      `json:"offset"`
+	Limit       int32      `json:"limit"`
 }
 
 type GetProblemsByFiltersRow struct {
-	ID         int32        `json:"id"`
-	Title      string       `json:"title"`
-	Difficulty int32        `json:"difficulty"`
-	Platform   NullPlatform `json:"platform"`
-	CreatedBy  uuid.UUID    `json:"created_by"`
-	CreatedAt  time.Time    `json:"created_at"`
-	LockAccess *string      `json:"lock_access"`
+	ID          int32        `json:"id"`
+	Title       string       `json:"title"`
+	Difficulty  int32        `json:"difficulty"`
+	Platform    NullPlatform `json:"platform"`
+	CreatedBy   uuid.UUID    `json:"created_by"`
+	CreatedAt   time.Time    `json:"created_at"`
+	LockID      *uuid.UUID   `json:"lock_id"`
+	LockGroupID *uuid.UUID   `json:"lock_group_id"`
+	LockTimeout *time.Time   `json:"lock_timeout"`
+	LockAccess  *string      `json:"lock_access"`
 }
 
 func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFiltersParams) ([]GetProblemsByFiltersRow, error) {
 	rows, err := q.db.Query(ctx, getProblemsByFilters,
-		arg.Title,
+		arg.ProblemIds,
+		arg.LockID,
 		arg.CreatedBy,
+		arg.TitleSearch,
 		arg.Offset,
 		arg.Limit,
 	)
@@ -246,6 +292,9 @@ func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFil
 			&i.Platform,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.LockID,
+			&i.LockGroupID,
+			&i.LockTimeout,
 			&i.LockAccess,
 		); err != nil {
 			return nil, err

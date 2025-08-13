@@ -24,9 +24,9 @@ func (p *ProblemService) AddProblem(
 		return Problem{}, err
 	}
 
-	// authorize
+	// authorize (only managers can add problems)
 	err = p.UserServiceConfig.AuthorizeUserRole(
-		ctx, claims.UserId, user_service.RoleManager,
+		ctx, user_service.RoleManager,
 		fmt.Sprintf(
 			"user %s tried for manager access to add a problem",
 			claims.UserName,
@@ -44,7 +44,7 @@ func (p *ProblemService) AddProblem(
 
 	// validate lock
 	if problem.LockId != nil {
-		// get the lock
+		// get the lock (authorizes by default)
 		lock, err := p.LockServiceConfig.GetLockById(
 			ctx,
 			*problem.LockId,
@@ -52,9 +52,13 @@ func (p *ProblemService) AddProblem(
 		if err != nil {
 			return Problem{}, err
 		}
+		
 		// validate the expiry
-		if p.LockServiceConfig.IsLockExpired(
-			lock, 5) {
+		exp, err := p.LockServiceConfig.IsLockExpired(lock, 5)
+		if err != nil {
+			return Problem{}, err
+		}
+		if exp {
 			return Problem{}, fmt.Errorf(
 				"%w, lock's expiry must be atleast 5 mins from now",
 				flux_errors.ErrInvalidRequest,
@@ -119,8 +123,8 @@ func getAddProblemParams(
 		OutputFormat:     problem.OutputFormat,
 		ExampleTestcases: dbProblemData.exampleTestCases, // Note: Typo in field name, should be ExampleTestcases if that's the intended field
 		Notes:            problem.Notes,
-		MemoryLimitKb:    problem.MemoryLimitKB,
-		TimeLimitMs:      problem.TimeLimitMS,
+		MemoryLimitKb:    problem.MemoryLimitKb,
+		TimeLimitMs:      problem.TimeLimitMs,
 		CreatedBy:        userId,
 		Difficulty:       problem.Difficulty,
 		SubmissionLink:   problem.SubmissionLink,

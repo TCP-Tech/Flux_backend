@@ -2,15 +2,18 @@ package problem_service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func (p *ProblemService) validateProblem(
@@ -154,8 +157,8 @@ func dbProblemToServiceProblem(
 		InputFormat:    dbProblem.InputFormat,
 		OutputFormat:   dbProblem.OutputFormat,
 		Notes:          dbProblem.Notes,
-		MemoryLimitKB:  dbProblem.MemoryLimitKb,
-		TimeLimitMS:    dbProblem.TimeLimitMs,
+		MemoryLimitKb:  dbProblem.MemoryLimitKb,
+		TimeLimitMs:    dbProblem.TimeLimitMs,
 		Difficulty:     dbProblem.Difficulty,
 		SubmissionLink: dbProblem.SubmissionLink,
 		CreatedBy:      dbProblem.CreatedBy,
@@ -164,4 +167,46 @@ func dbProblemToServiceProblem(
 		Platform:       serviceProbData.platformType,
 		LockId:         dbProblem.LockID,
 	}, nil
+}
+
+func (p *ProblemService) AuthorizeProblem(
+	ctx context.Context,
+	id int32,
+	warnMessage string,
+) (*uuid.UUID, error) {
+	// get lockID
+	auth, err := p.DB.GetProblemAuth(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err = fmt.Errorf(
+				"%w, no problem exist with given id",
+				flux_errors.ErrInvalidRequest,
+			)
+			return nil, err
+		}
+	}
+
+	// authorize
+	if auth.ID != nil {
+		if auth.Access == nil {
+			err = fmt.Errorf(
+				"%w, lock with id %v has access as nil",
+				flux_errors.ErrInternal,
+				auth.ID,
+			)
+			log.Error(err)
+			return nil, err
+		}
+		err = p.LockServiceConfig.AuthorizeLock(
+			ctx,
+			auth.Timeout,
+			user_service.UserRole(*auth.Access),
+			warnMessage,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return auth.ID, nil
 }

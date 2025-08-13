@@ -12,6 +12,7 @@ import (
 	"github.com/tcp_snm/flux/internal/email"
 	"github.com/tcp_snm/flux/internal/service"
 	"github.com/tcp_snm/flux/internal/service/auth_service"
+	"github.com/tcp_snm/flux/internal/service/contest_service"
 	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
@@ -26,7 +27,7 @@ var (
 	apiConfig *api.Api
 )
 
-func initDatabase() *database.Queries {
+func initDatabase() (*pgxpool.Pool, *database.Queries) {
 	// get the database url
 	dbURL := os.Getenv("DB_URL")
 	if dbURL == "" {
@@ -40,7 +41,7 @@ func initDatabase() *database.Queries {
 	}
 
 	// get the query tool with this connection
-	return database.New(pool)
+	return pool, database.New(pool)
 }
 
 func initUserService(db *database.Queries) *user_service.UserService {
@@ -72,18 +73,35 @@ func initLockService(db *database.Queries, us *user_service.UserService) *lock_s
 
 func initProblemService(
 	db *database.Queries,
-	us *user_service.UserService,
 	ls *lock_service.LockService,
+	us *user_service.UserService,
 ) *problem_service.ProblemService {
 	log.Info("initializing problem service")
 	return &problem_service.ProblemService{
 		DB:                db,
-		UserServiceConfig: us,
 		LockServiceConfig: ls,
+		UserServiceConfig: us,
 	}
 }
 
-func initApi(db *database.Queries) *api.Api {
+func initContestService(
+	pool *pgxpool.Pool,
+	db *database.Queries,
+	ls *lock_service.LockService,
+	us *user_service.UserService,
+	ps *problem_service.ProblemService,
+) *contest_service.ContestService {
+	log.Info("initializing contest service")
+	return &contest_service.ContestService{
+		Pool:                 pool,
+		DB:                   db,
+		LockServiceConfig:    ls,
+		UserServiceConfig:    us,
+		ProblemServiceConfig: ps,
+	}
+}
+
+func initApi(pool *pgxpool.Pool, db *database.Queries) *api.Api {
 	log.Info("initializing api config")
 	us := initUserService(db)
 	log.Info("user service created")
@@ -91,21 +109,30 @@ func initApi(db *database.Queries) *api.Api {
 	log.Info("auth service created")
 	ls := initLockService(db, us)
 	log.Info("lock service created")
-	ps := initProblemService(db, us, ls)
+	ps := initProblemService(db, ls, us)
 	log.Info("problem service created")
+	cs := initContestService(pool, db, ls, us, ps)
+	log.Info("contest service created")
 	a := api.Api{
 		AuthServiceConfig:    as,
 		ProblemServiceConfig: ps,
 		LockServiceConfig:    ls,
+		ContestService:       cs,
 	}
 	return &a
 }
 
 func setup() {
 	godotenv.Load()
+	log.SetFormatter(&log.TextFormatter{
+		// Force colors to be enabled
+		ForceColors: true,
+		// Add the full timestamp
+		FullTimestamp: true,
+	})
 	service.InitializeServices()
-	db := initDatabase()
-	apiConfig = initApi(db)
+	pool, db := initDatabase()
+	apiConfig = initApi(pool, db)
 	email.StartEmailWorkers(1)
 }
 

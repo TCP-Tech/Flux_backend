@@ -29,9 +29,8 @@ func (l *LockService) GetLockById(
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			err = fmt.Errorf(
-				"%w, lock with id %v do not exist",
+				"%w, lock with given id do not exist",
 				flux_errors.ErrNotFound,
-				id,
 			)
 			return
 		}
@@ -45,9 +44,9 @@ func (l *LockService) GetLockById(
 	}
 
 	// authorize
-	err = l.UserServiceConfig.AuthorizeUserRole(
+	err = l.AuthorizeLock(
 		ctx,
-		claims.UserId,
+		dbLock.Timeout,
 		user_service.UserRole(dbLock.Access),
 		fmt.Sprintf(
 			"user %s tried to view lock with id %v",
@@ -88,7 +87,6 @@ func (l *LockService) GetLocksByFilters(
 	// only manager or above can view locks
 	err = l.UserServiceConfig.AuthorizeUserRole(
 		ctx,
-		claims.UserId,
 		user_service.RoleManager,
 		fmt.Sprintf(
 			"user %s tried to view lock with filters",
@@ -115,7 +113,7 @@ func (l *LockService) GetLocksByFilters(
 	// fetch creator id if user_name or roll_no is provided
 	var createdBy *uuid.UUID
 	if request.CreatorUserName != "" || request.CreatorRollNo != "" {
-		user, err := l.UserServiceConfig.FetchUserFromDb(
+		user, err := l.UserServiceConfig.GetUserByUserNameOrRollNo(
 			ctx,
 			request.CreatorUserName,
 			request.CreatorRollNo,
@@ -133,7 +131,7 @@ func (l *LockService) GetLocksByFilters(
 	dbLocks, err := l.DB.GetLocksByFilter(
 		ctx,
 		database.GetLocksByFilterParams{
-			Name:      fmt.Sprintf("%%%s%%", request.LockName),
+			LockName:  request.LockName,
 			CreatedBy: createdBy,
 			GroupID:   groupID,
 			Offset:    offset,
@@ -153,15 +151,16 @@ func (l *LockService) GetLocksByFilters(
 	// convert the locks to service locks
 	locks := make([]FluxLock, 0, len(dbLocks))
 	for _, dbLock := range dbLocks {
-		err = l.UserServiceConfig.AuthorizeUserRole(
+		err = l.AuthorizeLock(
 			ctx,
-			claims.UserId,
+			dbLock.Timeout,
 			user_service.UserRole(dbLock.Access),
 			"",
 		)
-		if err == nil {
-			locks = append(locks, dbLockToServiceLock(dbLock))
+		if err != nil {
+			continue
 		}
+		locks = append(locks, dbLockToServiceLock(dbLock))
 	}
 
 	return locks, nil
