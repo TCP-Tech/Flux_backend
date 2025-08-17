@@ -2,96 +2,33 @@ package lock_service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
-func (l *LockService) validateLock(
-	ctx context.Context,
-	lock FluxLock,
-) error {
-	// validate using validator
+func validateLock(lock FluxLock) error {
+	if lock.Type == database.LockTypeManual {
+		return validateManualLock(lock)
+	}
+
+	return validateTimerLockTimeout(lock)
+}
+
+func validateManualLock(lock FluxLock) error {
+	// raw validation
 	err := service.ValidateInput(lock)
 	if err != nil {
 		return err
 	}
 
-	if lock.Type == database.LockTypeManual {
-		return validateManualLock(lock)
-	}
-
-	if lock.GroupID == nil {
-		return fmt.Errorf(
-			"%w, timer lock must have a group id",
-			flux_errors.ErrInvalidRequest,
-		)
-	}
-
-	if lock.Timeout == nil {
-		return fmt.Errorf(
-			"%w, timer lock must have non-null timeout",
-			flux_errors.ErrInvalidRequest,
-		)
-	}
-
-	// get lock group's timeout
-	timeout, err := l.DB.GetLockGroupTimeout(ctx, lock.GroupID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf(
-				"%w, no locks exist with that group id",
-				flux_errors.ErrInvalidRequest,
-			)
-		}
-		err = fmt.Errorf(
-			"%w, cannot fetch lock group timeout with id %v, %w",
-			flux_errors.ErrInternal,
-			lock.GroupID,
-			err,
-		)
-		log.Error(err)
-		return err
-	}
-
-	if timeout == nil {
-		err = fmt.Errorf(
-			"%w, lock group with id %v has timeout nil",
-			flux_errors.ErrInternal,
-			lock.GroupID,
-		)
-		return err
-	}
-
-	if (*timeout).UTC() != (*lock.Timeout).UTC() {
-		return fmt.Errorf(
-			"%w, other locks in that group id have timeout as %v",
-			flux_errors.ErrInvalidRequest,
-			(*timeout).UTC(),
-		)
-	}
-
-	return nil
-}
-
-func validateManualLock(lock FluxLock) error {
 	if lock.Timeout != nil {
 		return fmt.Errorf(
 			"%w, manual lock cannot have a timer",
-			flux_errors.ErrInvalidRequest,
-		)
-	}
-
-	if lock.GroupID != nil {
-		return fmt.Errorf(
-			"%w, manual lock cannot have a group id",
 			flux_errors.ErrInvalidRequest,
 		)
 	}
@@ -100,9 +37,15 @@ func validateManualLock(lock FluxLock) error {
 }
 
 func validateTimerLockTimeout(lock FluxLock) error {
+	// raw validation
+	err := service.ValidateInput(lock)
+	if err != nil {
+		return err
+	}
+
 	if lock.Timeout == nil {
 		return fmt.Errorf(
-			"%w, timer lock must not have timeout as null. Try to check the format of the timout",
+			"%w, timer lock must have a timeout",
 			flux_errors.ErrInvalidRequest,
 		)
 	}
@@ -116,15 +59,14 @@ func validateTimerLockTimeout(lock FluxLock) error {
 	}
 
 	// validate expiry
-	if time.Now().Add(time.Minute * 5).After(*lock.Timeout) {
+	if time.Now().After(*lock.Timeout) {
 		return fmt.Errorf(
-			"%w, lock's expiry must be atleast 5 minutes from now",
+			"%w, timer lock's timeout is in the past, please set a future time",
 			flux_errors.ErrInvalidRequest,
 		)
 	}
 
 	return nil
-
 }
 
 func dbLockToServiceLock(dbLock database.Lock) FluxLock {
@@ -142,7 +84,6 @@ func dbLockToServiceLock(dbLock database.Lock) FluxLock {
 		Description: dbLock.Description,
 		Type:        dbLock.LockType,
 		Access:      user_service.UserRole(dbLock.Access),
-		GroupID:     dbLock.GroupID,
 	}
 }
 

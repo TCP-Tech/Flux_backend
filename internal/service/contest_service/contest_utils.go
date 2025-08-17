@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	log "github.com/sirupsen/logrus"
 
@@ -45,7 +44,7 @@ func (c *ContestService) validatePrivateContest(
 		)
 	}
 
-	// contest must start after 5 minutes from now atleast
+	// contest must start after 1 minutes from now atleast
 	if time.Now().Add(time.Minute * 1).After(*contest.StartTime) {
 		return fmt.Errorf(
 			"%w, contest must start after atleast 1 minutes from now",
@@ -248,32 +247,17 @@ func (c *ContestService) addProblemsToContest(
 				Score:     problem.Score,
 			},
 		)
-		if err != nil {
-			// if the same question is added multiple times
-			// we need to rollback and inform the user as skipping and adding
-			// remaining problems will be confusing and creates subtle bugs
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) {
-				if pgErr.Code == flux_errors.CodeUniqueConstraintViolation {
-					// try sending user readable error
+		if err == nil {
+			continue
+		}
 
-					// constraint name is specified in the db creation sql files
-					if pgErr.ConstraintName == "contest_problems_pkey" {
-						return fmt.Errorf(
-							"%w, duplicate problems found",
-							flux_errors.ErrInvalidRequest,
-						)
-					}
-
-					// fallback
-					err = fmt.Errorf(
-						"%w, %s",
-						flux_errors.ErrInvalidRequest,
-						pgErr.Detail,
-					)
-					return err
-				}
-			}
+		// if the same question is added multiple times
+		// we need to rollback and inform the user as skipping and adding
+		// remaining problems will be confusing and creates subtle bugs
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) ||
+			pgErr.Code != flux_errors.CodeUniqueConstraintViolation {
+			// we don't know the exact case
 			err = fmt.Errorf(
 				"%w, failed to add problem %d to contest %v: %w",
 				flux_errors.ErrInternal,
@@ -284,6 +268,23 @@ func (c *ContestService) addProblemsToContest(
 			log.Error(err)
 			return err
 		}
+
+		// try sending user readable error
+		// constraint name is specified in the db creation sql files
+		if pgErr.ConstraintName == "contest_problems_pkey" {
+			return fmt.Errorf(
+				"%w, duplicate problems found",
+				flux_errors.ErrInvalidRequest,
+			)
+		}
+
+		// fallback
+		err = fmt.Errorf(
+			"%w, %s",
+			flux_errors.ErrInvalidRequest,
+			pgErr.Detail,
+		)
+		return err
 	}
 
 	return nil
@@ -401,26 +402,17 @@ func dbContestToServiceContest(
 	}
 
 	return Contest{
-		ID:           dbContest.ID,
-		Title:        dbContest.Title,
-		LockId:       dbContest.LockID,
-		StartTime:    utcStartTime,
-		EndTime:      dbContest.EndTime.UTC(),
-		IsPublished:  dbContest.IsPublished,
-		CreatedBy:    dbContest.CreatedBy,
-		LockGroupdID: dbContest.LockGroupID,
-		LockAccess:   lockAccess,
-		LockTimeout:  dbContest.LockTimeout,
+		ID:          dbContest.ID,
+		Title:       dbContest.Title,
+		LockId:      dbContest.LockID,
+		StartTime:   utcStartTime,
+		EndTime:     dbContest.EndTime.UTC(),
+		IsPublished: dbContest.IsPublished,
+		CreatedBy:   dbContest.CreatedBy,
+		LockAccess:  lockAccess,
+		LockTimeout: dbContest.LockTimeout,
 	}, nil
 }
-
-// func (c *ContestService) isUserRegisteredInContest(
-// 	ctx context.Context,
-// 	contestID uuid.UUID,
-// 	userID uuid.UUID,
-// ) (bool, error) {
-
-// }
 
 func (c *ContestService) authorizeContestUpdate(
 	ctx context.Context,
@@ -460,18 +452,18 @@ func (c *ContestService) authorizeContestUpdate(
 		}
 	}
 
-	// contest cannot be edited directly once started
+	// contest cannot be edited once started
 	if contest.StartTime != nil {
 		if time.Now().After(*contest.StartTime) {
 			return fmt.Errorf(
-				"%w, contest cannot be edited once started",
+				"%w, cannot perform this action once the contest has started",
 				flux_errors.ErrInvalidRequest,
 			)
 		}
 	} else if contest.LockTimeout != nil {
 		if time.Now().After(*contest.LockTimeout) {
 			return fmt.Errorf(
-				"%w, contest cannot be edited once started",
+				"%w, cannot perform this action once the contest has started",
 				flux_errors.ErrInvalidRequest,
 			)
 		}
@@ -485,26 +477,4 @@ func (c *ContestService) authorizeContestUpdate(
 	}
 
 	return err
-}
-
-// getNewTransaction starts a new database transaction using the connection pool.
-// Returns the transaction object (pgx.Tx) and an error if the transaction could not be created.
-func (c *ContestService) getNewTransaction(
-	ctx context.Context,
-) (pgx.Tx, error) {
-	// Begin a new transaction
-	tx, err := c.Pool.Begin(ctx)
-	if err != nil {
-		// Wrap and log the error if transaction creation fails
-		err = fmt.Errorf(
-			"%w, cannot create transaction, %w",
-			flux_errors.ErrInternal,
-			err,
-		)
-		log.Error(err)
-		return nil, err
-	}
-
-	// Return the transaction object and nil error
-	return tx, err
 }

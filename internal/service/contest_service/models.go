@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
@@ -12,7 +11,6 @@ import (
 )
 
 type ContestService struct {
-	Pool                 *pgxpool.Pool
 	DB                   *database.Queries
 	UserServiceConfig    *user_service.UserService
 	LockServiceConfig    *lock_service.LockService
@@ -40,9 +38,8 @@ type Contest struct {
 	CreatedBy   uuid.UUID  `json:"created_by"`
 
 	// fields used only for internal purpose
-	LockGroupdID *uuid.UUID             `json:"-"`
-	LockAccess   *user_service.UserRole `json:"-"`
-	LockTimeout  *time.Time             `json:"-"`
+	LockAccess  *user_service.UserRole `json:"-"`
+	LockTimeout *time.Time             `json:"-"`
 }
 
 type CreateContestRequest struct {

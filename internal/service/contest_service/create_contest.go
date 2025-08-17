@@ -64,7 +64,7 @@ func (c *ContestService) CreateContest(
 	}
 
 	// start a transaction
-	tx, err := c.getNewTransaction(ctx)
+	tx, err := service.GetNewTransaction(ctx)
 	if err != nil {
 		return Contest{}, err
 	}

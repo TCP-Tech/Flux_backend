@@ -25,8 +25,13 @@ Ref: user_roles.role_name > roles.role_name
 
 Table locks {
   id uuid pk
-  timeout datetime
+  lock_type enum
+  timeout datetime [null]
+  group_id uuid
+  access varchar(50)
 }
+
+Ref: locks.access > roles.role_name
 
 Table problems {
   id uuid pk
@@ -123,20 +128,32 @@ Ref: submissions.bot_account_id > bots.id
 Table tournaments {
   id uuid pk
   title varchar(255) unique
-  rounds int
   created_by uuid
   updated_by uuid
-  start_time datetime
 }
 
-Table tournament_contests {
-  contest_id uuid pk
-  tournament_id uuid pk
+Table tournament_rounds {
+  id uuid pk
+  tournament_id uuid
   round int
+  lock_id uuid
+  title varchar(100)
+  created_by uuid
+  updated_by uuid
 }
 
-Ref: tournament_contests.contest_id > contests.id
-Ref: tournament_contests.tournament_id > tournaments.id
+Ref: tournament_rounds.tournament_id > tournaments.id
+Ref: tournament_rounds.lock_id > locks.id
+Ref: tournament_rounds.created_by > users.id
+Ref: tournament_rounds.updated_by > users.id
+
+Table tournament_round_contests {
+  contest_id uuid
+  tournament_round_id uuid
+}
+
+Ref: tournament_round_contests.contest_id > contests.id
+Ref: tournament_round_contests.tournament_round_id > tournament_rounds.id
 
 Table contest_registered_users {
   user_id uuid

@@ -28,6 +28,8 @@ sql:
               pointer: true
           - db_type: "pg_catalog.timestamptz"
             go_type: "time.Time"
+          - db_type: "timestamptz"
+            go_type: "time.Time"
           - db_type: "jsonb"
             go_type:
               import: "encoding/json"

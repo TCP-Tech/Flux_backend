@@ -90,6 +90,15 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 	return i, err
 }
 
+const deleteContestByID = `-- name: DeleteContestByID :exec
+DELETE FROM contests WHERE id=$1
+`
+
+func (q *Queries) DeleteContestByID(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteContestByID, id)
+	return err
+}
+
 const deleteProblemsByContestId = `-- name: DeleteProblemsByContestId :exec
 DELETE FROM contest_problems WHERE contest_id = $1
 `
@@ -111,7 +120,6 @@ func (q *Queries) DeleteUsersByContestId(ctx context.Context, contestID uuid.UUI
 const getContestByID = `-- name: GetContestByID :one
 SELECT 
     contests.id, contests.title, contests.created_by, contests.created_at, contests.updated_at, contests.start_time, contests.end_time, contests.is_published, contests.lock_id,
-    locks.group_id as lock_group_id,
     locks.timeout as lock_timeout,
     locks.access
 FROM contests
@@ -130,7 +138,6 @@ type GetContestByIDRow struct {
 	EndTime     time.Time  `json:"end_time"`
 	IsPublished bool       `json:"is_published"`
 	LockID      *uuid.UUID `json:"lock_id"`
-	LockGroupID *uuid.UUID `json:"lock_group_id"`
 	LockTimeout *time.Time `json:"lock_timeout"`
 	Access      *string    `json:"access"`
 }
@@ -148,7 +155,6 @@ func (q *Queries) GetContestByID(ctx context.Context, id uuid.UUID) (GetContestB
 		&i.EndTime,
 		&i.IsPublished,
 		&i.LockID,
-		&i.LockGroupID,
 		&i.LockTimeout,
 		&i.Access,
 	)
@@ -215,15 +221,15 @@ SELECT
     c.is_published,
     c.lock_id,
     l.access as lock_access,
-    l.timeout as lock_timeout,
-    l.group_id as lock_group_id
+    l.timeout as lock_timeout
 FROM
     contests AS c
 LEFT JOIN
     locks AS l ON c.lock_id = l.id
 WHERE
     -- Optional filter by a list of contest IDs
-    (cardinality($1::uuid[]) = 0 OR c.id = ANY($1::uuid[]))
+    (   $1::uuid[] IS NULL OR
+        cardinality($1::uuid[]) = 0 OR c.id = ANY($1::uuid[]))
 AND
     -- Optional filter by published status
     ($2::boolean IS NULL OR c.is_published = $2::boolean)
@@ -262,7 +268,6 @@ type GetContestsByFiltersRow struct {
 	LockID      *uuid.UUID `json:"lock_id"`
 	LockAccess  *string    `json:"lock_access"`
 	LockTimeout *time.Time `json:"lock_timeout"`
-	LockGroupID *uuid.UUID `json:"lock_group_id"`
 }
 
 func (q *Queries) GetContestsByFilters(ctx context.Context, arg GetContestsByFiltersParams) ([]GetContestsByFiltersRow, error) {
@@ -293,7 +298,6 @@ func (q *Queries) GetContestsByFilters(ctx context.Context, arg GetContestsByFil
 			&i.LockID,
 			&i.LockAccess,
 			&i.LockTimeout,
-			&i.LockGroupID,
 		); err != nil {
 			return nil, err
 		}
@@ -382,4 +386,42 @@ DELETE FROM contest_problems WHERE contest_id=$1
 func (q *Queries) UnsetContestProblems(ctx context.Context, contestID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, unsetContestProblems, contestID)
 	return err
+}
+
+const updateContest = `-- name: UpdateContest :one
+UPDATE contests SET
+    title=$1,
+    start_time=$2,
+    end_time=$3
+WHERE id=$4
+RETURNING id, title, created_by, created_at, updated_at, start_time, end_time, is_published, lock_id
+`
+
+type UpdateContestParams struct {
+	Title     string     `json:"title"`
+	StartTime *time.Time `json:"start_time"`
+	EndTime   time.Time  `json:"end_time"`
+	ID        uuid.UUID  `json:"id"`
+}
+
+func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (Contest, error) {
+	row := q.db.QueryRow(ctx, updateContest,
+		arg.Title,
+		arg.StartTime,
+		arg.EndTime,
+		arg.ID,
+	)
+	var i Contest
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StartTime,
+		&i.EndTime,
+		&i.IsPublished,
+		&i.LockID,
+	)
+	return i, err
 }

@@ -44,7 +44,7 @@ func (c *ContestService) SetProblemsInContest(
 	}
 
 	// create a new transaction query tool if its nil
-	tx, err := c.getNewTransaction(ctx)
+	tx, err := service.GetNewTransaction(ctx)
 	if err != nil {
 		return err
 	}

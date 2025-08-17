@@ -80,7 +80,6 @@ SELECT
     p.created_by,   
     p.created_at,
     l.id as lock_id,
-    l.group_id as lock_group_id,
     l.timeout as lock_timeout,
     l.access as lock_access
 FROM

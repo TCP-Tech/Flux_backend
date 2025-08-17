@@ -17,7 +17,7 @@ func (a *Api) HandlerCreateContest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// create contest
-	contest, err := a.ContestService.CreateContest(
+	contest, err := a.ContestServiceConfig.CreateContest(
 		r.Context(),
 		createContestRequest,
 	)

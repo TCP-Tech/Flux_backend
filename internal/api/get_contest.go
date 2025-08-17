@@ -24,7 +24,7 @@ func (a *Api) HandlerGetContestByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// get the contest object
-	contest, err := a.ContestService.GetContestByID(r.Context(), id)
+	contest, err := a.ContestServiceConfig.GetContestByID(r.Context(), id)
 	if err != nil {
 		handlerError(err, w)
 		return
@@ -53,7 +53,7 @@ func (a *Api) HandlerGetContestProblems(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// get the contest problems from service
-	problems, err := a.ContestService.GetContestProblems(r.Context(), contestID)
+	problems, err := a.ContestServiceConfig.GetContestProblems(r.Context(), contestID)
 	if err != nil {
 		handlerError(err, w)
 		return
@@ -85,7 +85,7 @@ func (a *Api) HandlerGetContestUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// fetch users using service
-	users, err := a.ContestService.GetContestRegisteredUsers(r.Context(), contestID)
+	users, err := a.ContestServiceConfig.GetContestRegisteredUsers(r.Context(), contestID)
 	if err != nil {
 		handlerError(err, w)
 		return
@@ -115,7 +115,7 @@ func (a *Api) HandlerGetContestsByFilters(w http.ResponseWriter, r *http.Request
 	}
 
 	// get contests
-	contests, err := a.ContestService.GetContestsByFilters(r.Context(), request)
+	contests, err := a.ContestServiceConfig.GetContestsByFilters(r.Context(), request)
 	if err != nil {
 		handlerError(err, w)
 		return
@@ -165,7 +165,7 @@ func (a *Api) HandlerGetUserRegisteredContests(w http.ResponseWriter, r *http.Re
 	}
 
 	// get contests
-	contests, err := a.ContestService.GetUserRegisteredContests(
+	contests, err := a.ContestServiceConfig.GetUserRegisteredContests(
 		r.Context(), int32(pageNumber), int32(pageSize),
 	)
 	if err != nil {

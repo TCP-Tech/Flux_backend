@@ -15,6 +15,7 @@ import (
 	"github.com/tcp_snm/flux/internal/service/contest_service"
 	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
+	"github.com/tcp_snm/flux/internal/service/tournament_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 
 	"github.com/go-chi/chi/v5"
@@ -85,7 +86,6 @@ func initProblemService(
 }
 
 func initContestService(
-	pool *pgxpool.Pool,
 	db *database.Queries,
 	ls *lock_service.LockService,
 	us *user_service.UserService,
@@ -93,11 +93,25 @@ func initContestService(
 ) *contest_service.ContestService {
 	log.Info("initializing contest service")
 	return &contest_service.ContestService{
-		Pool:                 pool,
 		DB:                   db,
 		LockServiceConfig:    ls,
 		UserServiceConfig:    us,
 		ProblemServiceConfig: ps,
+	}
+}
+
+func initTournamentService(
+	db *database.Queries,
+	us *user_service.UserService,
+	ls *lock_service.LockService,
+	cs *contest_service.ContestService,
+) *tournament_service.TournamentService {
+	log.Info("initializing tournament service")
+	return &tournament_service.TournamentService{
+		DB:                   db,
+		UserServiceConfig:    us,
+		LockServiceConfig:    ls,
+		ContestServiceConfig: cs,
 	}
 }
 
@@ -111,13 +125,16 @@ func initApi(pool *pgxpool.Pool, db *database.Queries) *api.Api {
 	log.Info("lock service created")
 	ps := initProblemService(db, ls, us)
 	log.Info("problem service created")
-	cs := initContestService(pool, db, ls, us, ps)
+	cs := initContestService(db, ls, us, ps)
 	log.Info("contest service created")
+	ts := initTournamentService(db, us, ls, cs)
+	log.Info("tournament service created")
 	a := api.Api{
-		AuthServiceConfig:    as,
-		ProblemServiceConfig: ps,
-		LockServiceConfig:    ls,
-		ContestService:       cs,
+		AuthServiceConfig:       as,
+		ProblemServiceConfig:    ps,
+		LockServiceConfig:       ls,
+		ContestServiceConfig:    cs,
+		TournamentServiceConfig: ts,
 	}
 	return &a
 }
@@ -130,8 +147,8 @@ func setup() {
 		// Add the full timestamp
 		FullTimestamp: true,
 	})
-	service.InitializeServices()
 	pool, db := initDatabase()
+	service.InitializeServices(pool)
 	apiConfig = initApi(pool, db)
 	email.StartEmailWorkers(1)
 }

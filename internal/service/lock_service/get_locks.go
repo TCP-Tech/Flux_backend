@@ -97,19 +97,6 @@ func (l *LockService) GetLocksByFilters(
 		return nil, err
 	}
 
-	// parse group id
-	var groupID *uuid.UUID
-	if request.GroupId != nil {
-		parsedId, err := uuid.Parse(*request.GroupId)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"%w, invalid group id",
-				flux_errors.ErrInvalidRequest,
-			)
-		}
-		groupID = &parsedId
-	}
-
 	// fetch creator id if user_name or roll_no is provided
 	var createdBy *uuid.UUID
 	if request.CreatorUserName != "" || request.CreatorRollNo != "" {
@@ -133,7 +120,6 @@ func (l *LockService) GetLocksByFilters(
 		database.GetLocksByFilterParams{
 			LockName:  request.LockName,
 			CreatedBy: createdBy,
-			GroupID:   groupID,
 			Offset:    offset,
 			Limit:     request.PageSize,
 		},
@@ -158,7 +144,7 @@ func (l *LockService) GetLocksByFilters(
 			"",
 		)
 		if err != nil {
-			continue
+			log.Debug(err)
 		}
 		locks = append(locks, dbLockToServiceLock(dbLock))
 	}

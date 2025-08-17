@@ -131,7 +131,6 @@ type ContestRegisteredUser struct {
 type Lock struct {
 	ID          uuid.UUID  `json:"id"`
 	Name        string     `json:"name"`
-	GroupID     *uuid.UUID `json:"group_id"`
 	CreatedBy   uuid.UUID  `json:"created_by"`
 	CreatedAt   time.Time  `json:"created_at"`
 	Description string     `json:"description"`
@@ -195,20 +194,27 @@ type Token struct {
 }
 
 type Tournament struct {
-	ID        uuid.UUID `json:"id"`
-	Title     string    `json:"title"`
-	Rounds    int32     `json:"rounds"`
-	CreatedBy uuid.UUID `json:"created_by"`
-	UpdatedBy uuid.UUID `json:"updated_by"`
-	StartTime time.Time `json:"start_time"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          uuid.UUID `json:"id"`
+	Title       string    `json:"title"`
+	IsPublished bool      `json:"is_published"`
+	CreatedBy   uuid.UUID `json:"created_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type TournamentContest struct {
-	ContestID    uuid.UUID `json:"contest_id"`
-	TournamentID uuid.UUID `json:"tournament_id"`
-	Round        int32     `json:"round"`
+	RoundID   uuid.UUID `json:"round_id"`
+	ContestID uuid.UUID `json:"contest_id"`
+}
+
+type TournamentRound struct {
+	ID           uuid.UUID  `json:"id"`
+	TournamentID uuid.UUID  `json:"tournament_id"`
+	RoundNumber  int32      `json:"round_number"`
+	Title        string     `json:"title"`
+	LockID       *uuid.UUID `json:"lock_id"`
+	CreatedBy    uuid.UUID  `json:"created_by"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type User struct {

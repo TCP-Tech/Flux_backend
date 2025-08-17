@@ -50,5 +50,19 @@ func NewV1Router() *chi.Mux {
 	// update
 	v1.Put("/contests/users", middleware.JWTMiddleware(apiConfig.HandlerSetUsersInContest))
 	v1.Put("/contests/problems", middleware.JWTMiddleware(apiConfig.HandlerSetProblemsInContest))
+	v1.Put("/contests", middleware.JWTMiddleware(apiConfig.HandlerUpdateContest))
+	// delete
+	v1.Delete("/contests", middleware.JWTMiddleware(apiConfig.HanlderDeleteContest))
+
+	// tournaments
+	// search
+	v1.Get("/tournaments", middleware.JWTMiddleware(apiConfig.HandlerGetTournament))
+	v1.Get("/tournaments/rounds", middleware.JWTMiddleware(apiConfig.HandlerGetTournamentRound))
+	v1.Post("/tournaments/search", middleware.JWTMiddleware(apiConfig.HandlerGetTournamentsByFilters))
+	// create
+	v1.Post("/tournaments", middleware.JWTMiddleware(apiConfig.HandlerCreateTournament))
+	v1.Post("/tournaments/rounds", middleware.JWTMiddleware(apiConfig.HandlerCreateTournamentRound))
+	// update
+	v1.Put("/tournaments/contests", middleware.JWTMiddleware(apiConfig.HandlerChangeTournamentContest))
 	return v1
 }

@@ -59,7 +59,6 @@ SELECT EXISTS(
 -- name: GetContestByID :one
 SELECT 
     contests.*,
-    locks.group_id as lock_group_id,
     locks.timeout as lock_timeout,
     locks.access
 FROM contests
@@ -85,15 +84,15 @@ SELECT
     c.is_published,
     c.lock_id,
     l.access as lock_access,
-    l.timeout as lock_timeout,
-    l.group_id as lock_group_id
+    l.timeout as lock_timeout
 FROM
     contests AS c
 LEFT JOIN
     locks AS l ON c.lock_id = l.id
 WHERE
     -- Optional filter by a list of contest IDs
-    (cardinality(sqlc.slice('contest_ids')::uuid[]) = 0 OR c.id = ANY(sqlc.slice('contest_ids')::uuid[]))
+    (   sqlc.slice('contest_ids')::uuid[] IS NULL OR
+        cardinality(sqlc.slice('contest_ids')::uuid[]) = 0 OR c.id = ANY(sqlc.slice('contest_ids')::uuid[]))
 AND
     -- Optional filter by published status
     (sqlc.narg('is_published')::boolean IS NULL OR c.is_published = sqlc.narg('is_published')::boolean)
@@ -112,3 +111,14 @@ OFFSET
 
 -- name: GetUserRegisteredContests :many
 SELECT contest_id FROM contest_registered_users WHERE user_id=$1;
+
+-- name: UpdateContest :one
+UPDATE contests SET
+    title=$1,
+    start_time=$2,
+    end_time=$3
+WHERE id=$4
+RETURNING *;
+
+-- name: DeleteContestByID :exec
+DELETE FROM contests WHERE id=$1;

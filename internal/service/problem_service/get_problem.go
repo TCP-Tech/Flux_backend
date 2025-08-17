@@ -179,7 +179,6 @@ func (p *ProblemService) GetProblemsByFilters(
 			CreatedBy:   row.CreatedBy,
 			CreatedAt:   row.CreatedAt,
 			LockID:      row.LockID,
-			LockGroupID: row.LockGroupID,
 			LockAccess:  lockAccess,
 			LockTimeout: row.LockTimeout,
 		}
