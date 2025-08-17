@@ -208,7 +208,6 @@ SELECT
     p.created_by,   
     p.created_at,
     l.id as lock_id,
-    l.group_id as lock_group_id,
     l.timeout as lock_timeout,
     l.access as lock_access
 FROM
@@ -264,7 +263,6 @@ type GetProblemsByFiltersRow struct {
 	CreatedBy   uuid.UUID    `json:"created_by"`
 	CreatedAt   time.Time    `json:"created_at"`
 	LockID      *uuid.UUID   `json:"lock_id"`
-	LockGroupID *uuid.UUID   `json:"lock_group_id"`
 	LockTimeout *time.Time   `json:"lock_timeout"`
 	LockAccess  *string      `json:"lock_access"`
 }
@@ -293,7 +291,6 @@ func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFil
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.LockID,
-			&i.LockGroupID,
 			&i.LockTimeout,
 			&i.LockAccess,
 		); err != nil {

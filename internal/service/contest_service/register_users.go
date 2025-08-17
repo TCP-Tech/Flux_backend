@@ -42,7 +42,7 @@ func (c *ContestService) RegisterUsersToContest(
 	}
 
 	// create a new transaction
-	tx, err := c.getNewTransaction(ctx)
+	tx, err := service.GetNewTransaction(ctx)
 	if err != nil {
 		return err
 	}

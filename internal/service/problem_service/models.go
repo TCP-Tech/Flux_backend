@@ -39,7 +39,7 @@ type Problem struct {
 	MemoryLimitKb  int32             `json:"memory_limit_kb" validate:"required,min=1024"`
 	TimeLimitMs    int32             `json:"time_limit_ms" validate:"required,min=500"`
 	Difficulty     int32             `json:"difficulty" validate:"required,min=800,max=3000"`
-	SubmissionLink *string           `json:"submission_link" valdidate:"url"`
+	SubmissionLink *string           `json:"submission_link" validate:"url"`
 	Platform       *Platform         `json:"platform" validate:"omitempty,oneof=codeforces"`
 	CreatedBy      uuid.UUID         `json:"created_by"`
 	LastUpdatedBy  uuid.UUID         `json:"last_updated_by"`
@@ -86,7 +86,6 @@ type ProblemMetaData struct {
 
 	// field used only for internal purpose
 	LockID      *uuid.UUID             `json:"-"`
-	LockGroupID *uuid.UUID             `json:"-"`
 	LockTimeout *time.Time             `json:"-"`
 	LockAccess  *user_service.UserRole `json:"-"`
 }

@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/service/contest_service"
 )
 
@@ -21,7 +23,7 @@ func (a *Api) HandlerSetUsersInContest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// set users
-	err = a.ContestService.RegisterUsersToContest(
+	err = a.ContestServiceConfig.RegisterUsersToContest(
 		r.Context(),
 		request.ContestID,
 		request.UserNames,
@@ -48,7 +50,7 @@ func (a *Api) HandlerSetProblemsInContest(w http.ResponseWriter, r *http.Request
 	}
 
 	// set problems
-	err = a.ContestService.SetProblemsInContest(
+	err = a.ContestServiceConfig.SetProblemsInContest(
 		r.Context(),
 		request.ContestID,
 		request.Problems,
@@ -59,4 +61,31 @@ func (a *Api) HandlerSetProblemsInContest(w http.ResponseWriter, r *http.Request
 	}
 
 	respondWithJson(w, http.StatusOK, []byte("problems set successfully"))
+}
+
+func (a *Api) HandlerUpdateContest(w http.ResponseWriter, r *http.Request) {
+	// parse the request
+	var contest contest_service.Contest
+	err := decodeJsonBody(r.Body, &contest)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// update the contest using service
+	serviceContest, err := a.ContestServiceConfig.UpdateContest(r.Context(), contest)
+	if err != nil {
+		handlerError(err, w)
+		return
+	}
+
+	// marshal
+	response, err := json.Marshal(serviceContest)
+	if err != nil {
+		log.Errorf("cannot marshal %v, %v", serviceContest, err.Error())
+		http.Error(w, "contest updated but cannot prepare response", http.StatusInternalServerError)
+		return
+	}
+
+	respondWithJson(w, http.StatusOK, response)
 }

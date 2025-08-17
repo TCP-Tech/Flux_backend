@@ -102,6 +102,7 @@ func (c *ContestService) GetContestsByFilters(
 			)
 			continue
 		}
+		utcStartTime := startTime.UTC()
 
 		var lockAccess *user_service.UserRole
 		if dbContest.LockAccess != nil {
@@ -110,16 +111,15 @@ func (c *ContestService) GetContestsByFilters(
 		}
 
 		contest := Contest{
-			ID:           dbContest.ID,
-			Title:        dbContest.Title,
-			LockId:       dbContest.LockID,
-			StartTime:    startTime,
-			EndTime:      dbContest.EndTime,
-			IsPublished:  dbContest.IsPublished,
-			CreatedBy:    dbContest.CreatedBy,
-			LockGroupdID: dbContest.LockGroupID,
-			LockAccess:   lockAccess,
-			LockTimeout:  dbContest.LockTimeout,
+			ID:          dbContest.ID,
+			Title:       dbContest.Title,
+			LockId:      dbContest.LockID,
+			StartTime:   &utcStartTime,
+			EndTime:     dbContest.EndTime.UTC(),
+			IsPublished: dbContest.IsPublished,
+			CreatedBy:   dbContest.CreatedBy,
+			LockAccess:  lockAccess,
+			LockTimeout: dbContest.LockTimeout,
 		}
 
 		res = append(res, contest)

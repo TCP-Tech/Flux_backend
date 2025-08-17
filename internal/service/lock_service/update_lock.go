@@ -56,7 +56,6 @@ func (l *LockService) UpdateLock(
 		},
 	)
 	if err != nil {
-		// only internal error might occur currently
 		err = fmt.Errorf(
 			"%w, unable to update lock with id %v, %w",
 			flux_errors.ErrInternal,
@@ -79,7 +78,7 @@ func (l *LockService) validateLockUpdate(
 			flux_errors.ErrInvalidRequest,
 		)
 	}
-	
+
 	if previousLock.Type == database.LockTypeTimer {
 		return fmt.Errorf(
 			"%w, cannot update a timer lock",

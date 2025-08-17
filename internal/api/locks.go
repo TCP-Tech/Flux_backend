@@ -12,29 +12,24 @@ import (
 
 func (a *Api) HandlerCreateLock(w http.ResponseWriter, r *http.Request) {
 	// decode the body
-	type cretaeLockRequest struct {
-		Lock            lock_service.FluxLock `json:"lock"`
-		GenerateGroupId bool                  `json:"generate_group_id"`
-	}
-	var request cretaeLockRequest
-	err := decodeJsonBody(r.Body, &request)
+	var lock lock_service.FluxLock
+	err := decodeJsonBody(r.Body, &lock)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// create lock with service
-	lock, err := a.LockServiceConfig.CreateLock(
+	serviceLock, err := a.LockServiceConfig.CreateLock(
 		r.Context(),
-		request.Lock,
-		request.GenerateGroupId,
+		lock,
 	)
 	if err != nil {
 		handlerError(err, w)
 		return
 	}
 
-	bytes, err := json.Marshal(lock)
+	bytes, err := json.Marshal(serviceLock)
 	if err != nil {
 		log.Errorf(
 			"cannot marshal %v, %v",

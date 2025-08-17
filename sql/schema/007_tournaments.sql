@@ -1,55 +1,99 @@
+-- ========= TRIGGER FUNCTION =========
+-- A reusable function to automatically update the 'updated_at' column on any row update.
+-- This ensures that we always have an accurate timestamp for the last modification.
+
 -- +goose up
--- Tournaments Table
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- +goose StatementEnd
+
+
+-- ========= TOURNAMENTS TABLE =========
+-- Stores the main details for a tournament event.
+
 CREATE TABLE tournaments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- Unique identifier for the tournament
-    title VARCHAR(255) NOT NULL UNIQUE, -- The title of the tournament
-    rounds INTEGER NOT NULL, -- Number of rounds in the tournament
-    created_by UUID NOT NULL REFERENCES users(id), -- The user who created this tournament (foreign key)
-    updated_by UUID NOT NULL REFERENCES users(id), -- The last user to update this tournament (foreign key)
-    start_time TIMESTAMP WITH TIME ZONE NOT NULL, -- When the tournament begins
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL UNIQUE,
+    is_published BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by UUID NOT NULL REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    -- updated_at is managed by the trigger below
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
--- indexes for common lookup fields
-CREATE INDEX idx_tournaments_created_by ON tournaments(created_by);
-CREATE INDEX idx_tournaments_updated_by ON tournaments(updated_by);
-CREATE INDEX idx_tournaments_start_time ON tournaments(start_time);
-
 -- +goose StatementBegin
--- A trigger to automatically update 'updated_at' on every row modification for tournament table
-CREATE OR REPLACE FUNCTION update_tournaments_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- Trigger to automatically update the 'updated_at' timestamp
+CREATE TRIGGER set_tournaments_timestamp
+BEFORE UPDATE ON tournaments
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_set_timestamp();
 -- +goose StatementEnd
 
-CREATE TRIGGER update_tournaments_updated_at BEFORE UPDATE ON tournaments FOR EACH ROW EXECUTE FUNCTION update_tournaments_updated_at_column();
+-- ========= TOURNAMENT ROUNDS TABLE =========
+-- Stores the individual rounds that make up a tournament.
 
+CREATE TABLE tournament_rounds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- If a tournament has rounds, it cannot be deleted.
+    tournament_id UUID NOT NULL,
+    CONSTRAINT fk_rounds_tournament
+        FOREIGN KEY (tournament_id)
+        REFERENCES tournaments(id)
+        ON DELETE RESTRICT,
+        
+    round_number INT NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    lock_id UUID REFERENCES locks(id) ON DELETE SET NULL, -- If a lock is deleted, this becomes NULL.
+    created_by UUID NOT NULL REFERENCES users(id),
+    -- updated_at is managed by the trigger below
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
 
--- Tournament Contests Table (Many-to-Many relationship between tournaments and contests)
-CREATE TABLE tournament_contests (
-    contest_id UUID NOT NULL REFERENCES contest(id),
-    tournament_id UUID NOT NULL REFERENCES tournaments(id),
-    round INTEGER NOT NULL, -- The round number within the tournament
-
-    -- Composite Primary Key: Ensures a contest is listed only once per tournament
-    PRIMARY KEY (contest_id, tournament_id) -- Defines the composite primary key
+    -- A tournament cannot have two rounds with the same number (e.g., two "Round 1"s).
+    UNIQUE (tournament_id, round_number)
 );
 
--- indexes for foreign keys in the join table
-CREATE INDEX idx_tournament_contests_contest_id ON tournament_contests(contest_id);
-CREATE INDEX idx_tournament_contests_tournament_id ON tournament_contests(tournament_id);
+-- Indexes on foreign keys for faster joins and lookups
+CREATE INDEX idx_tournament_rounds_tournament_id ON tournament_rounds(tournament_id);
+CREATE INDEX idx_tournament_rounds_lock_id ON tournament_rounds(lock_id);
 
--- +goose Down
-DROP INDEX idx_tournament_contests_tournament_id;
-DROP INDEX idx_tournament_contests_contest_id;
-DROP TABLE tournament_contests;
-DROP TRIGGER update_tournaments_updated_at ON tournaments;
-DROP INDEX idx_tournaments_start_time;
-DROP INDEX idx_tournaments_updated_by;
-DROP INDEX idx_tournaments_created_by;
-DROP TABLE tournaments;
+-- +goose StatementBegin
+-- Trigger to automatically update the 'updated_at' timestamp
+CREATE TRIGGER set_tournament_rounds_timestamp
+BEFORE UPDATE ON tournament_rounds
+FOR EACH ROW
+EXECUTE PROCEDURE trigger_set_timestamp();
+-- +goose StatementEnd
+
+-- ========= TOURNAMENT CONTESTS MAPPING TABLE =========
+-- This table links contests to specific rounds within a tournament.
+
+CREATE TABLE tournament_contests (
+    round_id UUID NOT NULL REFERENCES tournament_rounds(id), -- If a round is deleted, its contest links are also deleted.
+    contest_id UUID NOT NULL REFERENCES contests(id), -- If a contest is deleted, its links are also deleted.
+
+    -- A contest can only be in a specific round once.
+    PRIMARY KEY (round_id, contest_id)
+);
+
+-- +goose down
+-- Drop in reverse dependency order
+
+-- Drop tournament_contests
+DROP TABLE IF EXISTS tournament_contests;
+
+-- Drop tournament_rounds and its trigger
+DROP TRIGGER IF EXISTS set_tournament_rounds_timestamp ON tournament_rounds;
+DROP TABLE IF EXISTS tournament_rounds;
+
+-- Drop tournaments and its trigger
+DROP TRIGGER IF EXISTS set_tournaments_timestamp ON tournaments;
+DROP TABLE IF EXISTS tournaments;
+
+-- Drop trigger function
+DROP FUNCTION IF EXISTS trigger_set_timestamp;

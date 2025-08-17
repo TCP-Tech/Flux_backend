@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
@@ -28,10 +30,12 @@ const (
 
 var (
 	validate *validator.Validate
+	pool     *pgxpool.Pool
 )
 
-func InitializeServices() {
+func InitializeServices(mainPool *pgxpool.Pool) {
 	validate = initValidator() // used for validating struct fields
+	pool = mainPool
 }
 
 func initValidator() *validator.Validate {
@@ -64,4 +68,26 @@ func GetClaimsFromContext(
 		log.Error(err)
 	}
 	return
+}
+
+// getNewTransaction starts a new database transaction using the connection pool.
+// Returns the transaction object (pgx.Tx) and an error if the transaction could not be created.
+func GetNewTransaction(
+	ctx context.Context,
+) (pgx.Tx, error) {
+	// Begin a new transaction
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		// Wrap and log the error if transaction creation fails
+		err = fmt.Errorf(
+			"%w, cannot create transaction, %w",
+			flux_errors.ErrInternal,
+			err,
+		)
+		log.Error(err)
+		return nil, err
+	}
+
+	// Return the transaction object and nil error
+	return tx, err
 }
