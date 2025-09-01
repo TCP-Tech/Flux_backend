@@ -14,11 +14,15 @@ import (
 
 func (a *AuthService) ResetPasswordSendMail(
 	ctx context.Context,
-	userName string,
-	rollNo string,
+	userName *string,
+	rollNo *string,
 ) error {
 	// fetch the user from db
-	user, err := a.UserConfig.GetUserByUserNameOrRollNo(ctx, userName, rollNo)
+	userMetaData, err := a.UserConfig.GetUserByUserNameOrRollNo(ctx, userName, rollNo)
+	if err != nil {
+		return err
+	}
+	user, err := a.UserConfig.GetUserProfile(ctx, userMetaData.UserID)
 	if err != nil {
 		return err
 	}
@@ -35,34 +39,33 @@ func (a *AuthService) ResetPasswordSendMail(
 
 func (a *AuthService) ResetPassword(
 	ctx context.Context,
-	userName string,
-	rollNo string,
-	password string,
-	token string,
+	request ResetPasswordRequest,
 ) error {
 	// create a custom logger
 	resetLogger := log.WithFields(
 		log.Fields{
-			"user_name": userName,
-			"roll_no":   rollNo,
+			"user_name": request.UserName,
+			"roll_no":   request.RollNo,
 			"purpose":   string(email.PurposeEmailPasswordReset),
 		},
 	)
 
 	// fetch user from db
-	user, err := a.UserConfig.GetUserByUserNameOrRollNo(ctx, userName, rollNo)
+	userMetaData, err := a.UserConfig.GetUserByUserNameOrRollNo(
+		ctx, request.UserName, request.RollNo,
+	)
 	if err != nil {
-		resetLogger.Errorf(
-			"tried to reset password but error occurred while fetching user from db, %v",
-			err,
-		)
+		return err
+	}
+	user, err := a.UserConfig.GetUserProfile(ctx, userMetaData.UserID)
+	if err != nil {
 		return err
 	}
 
 	// verify token
 	if err = a.validateVerificationToken(
 		ctx,
-		token,
+		request.Token,
 		user.Email,
 		email.PurposeEmailPasswordReset,
 	); err != nil {
@@ -77,14 +80,14 @@ func (a *AuthService) ResetPassword(
 		struct {
 			Password string `json:"password" validate:"required,min=7,max=74"`
 		}{
-			Password: password,
+			Password: request.Password,
 		},
 	); err != nil {
 		return err
 	}
 
 	// generate password hash
-	passwordHash, err := generatePasswordHash(password)
+	passwordHash, err := generatePasswordHash(request.Password)
 	if err != nil {
 		return err
 	}
@@ -102,7 +105,7 @@ func (a *AuthService) ResetPassword(
 	// invalidate token
 	a.invalidateVerificationToken(
 		ctx,
-		token,
+		request.Token,
 		user.Email,
 		email.PurposeEmailPasswordReset,
 	)

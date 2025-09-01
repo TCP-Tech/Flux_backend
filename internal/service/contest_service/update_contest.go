@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 )
@@ -47,12 +46,11 @@ func (c *ContestService) UpdateContest(
 		},
 	)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, failed update a private contest, %w",
-			flux_errors.ErrInternal,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot update contest with id %v", contest.ID),
 		)
-		log.Error(err)
 		return Contest{}, err
 	}
 

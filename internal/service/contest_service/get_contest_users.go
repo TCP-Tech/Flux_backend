@@ -17,13 +17,11 @@ func (c *ContestService) GetContestRegisteredUsers(
 	// fetch userIDs from db
 	userIDs, err := c.DB.GetContestUsers(ctx, contestID)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot fetch users of contest %v, %w",
-			flux_errors.ErrInternal,
-			contestID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot fetch users of contest with id %v", contestID),
 		)
-		log.Error(err)
 		return nil, err
 	}
 
@@ -37,8 +35,8 @@ func (c *ContestService) GetContestRegisteredUsers(
 		ctx,
 		user_service.GetUsersRequest{
 			PageNumber: 1,
-			PageSize: int32(len(userIDs)),
-			UserIDs: userIDs,
+			PageSize:   int32(len(userIDs)),
+			UserIDs:    userIDs,
 		},
 	)
 
@@ -47,7 +45,7 @@ func (c *ContestService) GetContestRegisteredUsers(
 		log.WithFields(
 			log.Fields{
 				"registered_user_ids": userIDs,
-				"fetched_users": users,
+				"fetched_users":       users,
 			},
 		).Warnf(
 			"contest registered userIDs and fetched_users of contest %v are not same",

@@ -8,7 +8,6 @@ import (
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
-	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func validateLock(lock FluxLock) error {
@@ -83,7 +82,7 @@ func dbLockToServiceLock(dbLock database.Lock) FluxLock {
 		ID:          dbLock.ID,
 		Description: dbLock.Description,
 		Type:        dbLock.LockType,
-		Access:      user_service.UserRole(dbLock.Access),
+		Access:      dbLock.Access,
 	}
 }
 
@@ -114,7 +113,7 @@ func (l *LockService) IsLockExpired(
 func (l *LockService) AuthorizeLock(
 	ctx context.Context,
 	timeout *time.Time,
-	access user_service.UserRole,
+	access string,
 	warnMessage string,
 ) error {
 	// timer lock expired

@@ -5,14 +5,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/tcp_snm/flux/internal/database"
+	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service/contest_service"
 	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
-var dbConstraintMessages = map[string]string{
-	"fk_rounds_tournament": "Tournament does not exist.",
-}
+var (
+	msgForeignKey = map[string]string{
+		"fk_rounds_tournament": "Tournament does not exist.",
+	}
+
+	errMsgs = map[string]map[string]string{
+		flux_errors.CodeForeignKeyConstraint: msgForeignKey,
+	}
+)
 
 type TournamentService struct {
 	DB                   *database.Queries
@@ -38,8 +45,8 @@ type TournamentRound struct {
 	CreatedBy    uuid.UUID  `json:"created_by"`
 
 	// fields used internally
-	LockAccess *user_service.UserRole `json:"-"`
-	// currently this field is nil-only
+	LockAccess *string `json:"-"`
+	// currently this field is nil-only as timer locks cannot be used to lock rounds
 	LockTimeout *time.Time `json:"-"`
 }
 

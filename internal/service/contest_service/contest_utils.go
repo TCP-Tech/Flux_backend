@@ -75,17 +75,18 @@ func (c *ContestService) validatePrivateContest(
 }
 
 func (c *ContestService) validatePublicContest(
-	request CreateContestRequest,
+	contest Contest,
+	registeredUserNames []string,
 	lock lock_service.FluxLock,
 ) error {
 	// raw validations
-	err := service.ValidateInput(request.ContestDetails)
+	err := service.ValidateInput(contest)
 	if err != nil {
 		return err
 	}
 
 	// start time is inferred only from its lock
-	if request.ContestDetails.StartTime != nil {
+	if contest.StartTime != nil {
 		return fmt.Errorf(
 			"%w, start time of a public contest must be null, it is inferred from its lock only",
 			flux_errors.ErrInvalidRequest,
@@ -113,7 +114,7 @@ func (c *ContestService) validatePublicContest(
 	}
 
 	// validate end time
-	if lock.Timeout.Add(time.Minute * 5).After(request.ContestDetails.EndTime) {
+	if lock.Timeout.Add(time.Minute * 5).After(contest.EndTime) {
 		return fmt.Errorf(
 			"%w, contest endtime must be atleast 5 minutes after the expiry of the lock",
 			flux_errors.ErrInvalidRequest,
@@ -121,7 +122,7 @@ func (c *ContestService) validatePublicContest(
 	}
 
 	// published contest cannot have any users registered
-	if request.ContestDetails.IsPublished && len(request.RegisteredUsers) > 0 {
+	if contest.IsPublished && len(registeredUserNames) > 0 {
 		return fmt.Errorf(
 			"%w, published contest cannot have any registered users",
 			flux_errors.ErrInvalidRequest,
@@ -153,7 +154,7 @@ func (c *ContestService) validateContestProblems(
 	}
 
 	// fetch problems (Get method also perform auth implicitly)
-	problemsMetadata, err := c.ProblemServiceConfig.GetProblemsByFilters(
+	fetchedProblems, err := c.ProblemServiceConfig.GetProblemsByFilters(
 		ctx,
 		problem_service.GetProblemsRequest{
 			ProblemIDs: problemIDs,
@@ -167,7 +168,7 @@ func (c *ContestService) validateContestProblems(
 
 	// validate
 	for _, id := range problemIDs {
-		pmd, ok := problemsMetadata[id]
+		fetchedProblem, ok := fetchedProblems[id]
 		if !ok {
 			return fmt.Errorf(
 				"%w, problem with id %v does not exist",
@@ -175,16 +176,17 @@ func (c *ContestService) validateContestProblems(
 				id,
 			)
 		}
+		if contestLockID == nil {
+			continue
+		}
 
 		// if its a public contest, then all the problems in it
 		// must have the same lock id
-		if contestLockID != nil {
-			if pmd.LockID == nil || (*contestLockID != *pmd.LockID) {
-				return fmt.Errorf(
-					"%w, contest and problems must have the same lock id",
-					flux_errors.ErrInvalidRequest,
-				)
-			}
+		if fetchedProblem.LockID == nil || (*contestLockID != *fetchedProblem.LockID) {
+			return fmt.Errorf(
+				"%w, contest and problems must have the same lock id",
+				flux_errors.ErrInvalidRequest,
+			)
 		}
 	}
 
@@ -206,13 +208,11 @@ func (c *ContestService) unsetContestProblems(
 
 	err := qtx.UnsetContestProblems(ctx, contestID)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot unset problems of contest with %v, %w",
-			flux_errors.ErrInternal,
-			contestID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot problems of contest with id %v", contestID),
 		)
-		log.Error(err)
 		return err
 	}
 
@@ -251,38 +251,26 @@ func (c *ContestService) addProblemsToContest(
 			continue
 		}
 
-		// if the same question is added multiple times
+		// if the same question is added multiple times,
 		// we need to rollback and inform the user as skipping and adding
 		// remaining problems will be confusing and creates subtle bugs
 		var pgErr *pgconn.PgError
-		if !errors.As(err, &pgErr) ||
-			pgErr.Code != flux_errors.CodeUniqueConstraintViolation {
-			// we don't know the exact case
-			err = fmt.Errorf(
-				"%w, failed to add problem %d to contest %v: %w",
-				flux_errors.ErrInternal,
-				problem.ProblemId,
-				contestID,
-				err,
-			)
-			log.Error(err)
-			return err
-		}
-
-		// try sending user readable error
-		// constraint name is specified in the db creation sql files
-		if pgErr.ConstraintName == "contest_problems_pkey" {
+		if errors.As(err, &pgErr) && pgErr.ConstraintName == "contest_problems_pkey" {
 			return fmt.Errorf(
 				"%w, duplicate problems found",
 				flux_errors.ErrInvalidRequest,
 			)
 		}
 
-		// fallback
-		err = fmt.Errorf(
-			"%w, %s",
-			flux_errors.ErrInvalidRequest,
-			pgErr.Detail,
+		// unknown error occurred
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf(
+				"failed to add problem with id %v to contest %v",
+				problem.ProblemId,
+				contestID,
+			),
 		)
 		return err
 	}
@@ -347,15 +335,11 @@ func (c *ContestService) addUsersToContest(
 			},
 		)
 		if err != nil {
-			err = fmt.Errorf(
-				"%w, cannot register user %s to contest %v, %w",
-				flux_errors.ErrInternal,
-				user.UserName,
-				contestID,
+			err = flux_errors.HandleDBErrors(
 				err,
+				errMsgs,
+				fmt.Sprintf("cannot add users to contest with id %v", contestID),
 			)
-			log.Error(err)
-			return err
 		}
 	}
 
@@ -365,13 +349,6 @@ func (c *ContestService) addUsersToContest(
 func dbContestToServiceContest(
 	dbContest database.GetContestByIDRow,
 ) (Contest, error) {
-	// convert lock access to user_service.UserRole
-	var lockAccess *user_service.UserRole
-	if dbContest.Access != nil {
-		la := user_service.UserRole(*dbContest.Access)
-		lockAccess = &la
-	}
-
 	// time in database is stored in timezone, convert it to utc
 	var utcStartTime *time.Time
 	if dbContest.LockID != nil {
@@ -409,7 +386,7 @@ func dbContestToServiceContest(
 		EndTime:     dbContest.EndTime.UTC(),
 		IsPublished: dbContest.IsPublished,
 		CreatedBy:   dbContest.CreatedBy,
-		LockAccess:  lockAccess,
+		LockAccess:  dbContest.Access,
 		LockTimeout: dbContest.LockTimeout,
 	}, nil
 }
@@ -453,27 +430,20 @@ func (c *ContestService) authorizeContestUpdate(
 	}
 
 	// contest cannot be edited once started
-	if contest.StartTime != nil {
-		if time.Now().After(*contest.StartTime) {
-			return fmt.Errorf(
-				"%w, cannot perform this action once the contest has started",
-				flux_errors.ErrInvalidRequest,
-			)
-		}
-	} else if contest.LockTimeout != nil {
-		if time.Now().After(*contest.LockTimeout) {
-			return fmt.Errorf(
-				"%w, cannot perform this action once the contest has started",
-				flux_errors.ErrInvalidRequest,
-			)
-		}
-	} else {
+	if contest.StartTime == nil {
 		err = fmt.Errorf(
 			"%w, contest has both start time and lockTimeout as nil",
 			flux_errors.ErrInternal,
 		)
 		log.Error(err)
 		return err
+	}
+
+	if time.Now().After(*contest.StartTime) {
+		return fmt.Errorf(
+			"%w, cannot perform this action once the contest has started",
+			flux_errors.ErrInvalidRequest,
+		)
 	}
 
 	return err

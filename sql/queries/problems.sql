@@ -1,74 +1,93 @@
 -- name: AddProblem :one
 INSERT INTO problems (
     title,
+    difficulty,
+    evaluator,
+    lock_id,
+    created_by,
+    last_updated_by
+) VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: AddStandardProblemData :one
+INSERT INTO standard_problem_data (
+    problem_id,
     statement,
     input_format,
     output_format,
+    function_definitons,
     example_testcases,
     notes,
     memory_limit_kb,
     time_limit_ms,
-    created_by,
-    last_updated_by,
-    difficulty,
     submission_link,
-    platform,
-    lock_id
+    last_updated_by
 ) VALUES (
-    $1, -- title
-    $2, -- statement
-    $3, -- input_format (can be NULL)
-    $4, -- output_format (can be NULL)
-    $5, -- samples (can be NULL)
-    $6, -- notes (can be NULL)
-    $7, -- memory_limit_kb
-    $8, -- time_limit_ms
-    $9, -- created_by (UUID)
-    $9, -- last_updated_by (UUID)
-    $10, -- difficulty (can be NULL)
-    $11, -- submission_link (can be NULL)
-    $12, -- platform (can be NULL)
-    $13 -- lock_id
+    $1,  -- problem_id
+    $2,  -- statement
+    $3,  -- input_format
+    $4,  -- output_format
+    $5,  -- function_definiton
+    $6,  -- example_testcases
+    $7,  -- notes
+    $8,  -- memory_limit_kb
+    $9,  -- time_limit_ms
+    $10,  -- submission_link
+    $11  -- last_)updated_by
 )
 RETURNING *;
 
 -- name: CheckPlatformType :one
 SELECT $1::Platform;
 
--- name: GetProblemById :one
-SELECT
-    -- Explicitly list all columns from 'problems' except 'lock_id'
-    problems.*,
-
-    -- Select only the 'access' column from the 'locks' table
-    locks.access as lock_access,
-    locks.timeout as lock_timeout
-FROM
-    problems
-LEFT JOIN
-    locks ON problems.lock_id = locks.id
-WHERE
-    problems.id = $1;
-
-
 -- name: UpdateProblem :one
-UPDATE problems
+UPDATE problems SET
+    title=$2,
+    difficulty=$3,
+    evaluator=$4,
+    lock_id=$5,
+    last_updated_by=$6
+WHERE 
+    id=$1
+RETURNING *;
+
+-- name: GetProblemByID :one
+SELECT 
+    p.id,
+    p.title,
+    p.difficulty,
+    p.evaluator,
+    p.lock_id,
+    p.created_by,
+
+    l.access,
+    l.timeout
+FROM
+    problems p
+LEFT JOIN
+    locks l
+ON
+    p.lock_id = l.id
+WHERE p.id=$1;
+
+-- name: GetStandardProblemData :one
+SELECT * FROM standard_problem_data WHERE problem_id=$1;
+
+-- name: UpdateStandardProblemData :one
+UPDATE standard_problem_data
 SET
-    title = $1,
     statement = $2,
     input_format = $3,
     output_format = $4,
-    example_testcases = $5,
-    notes = $6,
-    memory_limit_kb = $7,
-    time_limit_ms = $8,
-    difficulty = $9,
+    function_definitons = $5,
+    example_testcases = $6,
+    notes = $7,
+    memory_limit_kb = $8,
+    time_limit_ms = $9,
     submission_link = $10,
-    platform = $11,
-    last_updated_by = $12,
-    lock_id = $13
+    last_updated_by = $11
 WHERE
-    id = $14
+    problem_id = $1
 RETURNING *;
 
 -- name: GetProblemsByFilters :many
@@ -76,20 +95,22 @@ SELECT
     p.id,
     p.title,
     p.difficulty,
-    p.platform,
-    p.created_by,   
-    p.created_at,
-    l.id as lock_id,
-    l.timeout as lock_timeout,
-    l.access as lock_access
+    p.evaluator,
+    p.created_by,
+    p.lock_id,
+
+    l.timeout,
+    l.access
 FROM
     problems AS p
+JOIN 
+    standard_problem_data AS pd
+ON
+    p.id = pd.problem_id
 LEFT JOIN
     locks AS l ON p.lock_id = l.id
 WHERE
     -- Optional filter by a list of problem IDs
-    -- This checks if the input slice is empty. If it is, the condition is true.
-    -- If not empty, it checks if the problem ID is in the slice.
     (
         (sqlc.slice('problem_ids')::int[]) IS NULL OR
         cardinality(sqlc.slice('problem_ids')::int[]) = 0 OR
@@ -108,17 +129,20 @@ AND
         p.created_by = sqlc.narg('created_by')::uuid
     )
 AND
-    -- Title search with wildcards handled in SQL
-    p.title ILIKE '%' || sqlc.arg('title_search')::text || '%'
+    -- Optional filter by evaluator
+    (
+        sqlc.narg('evaluator')::text IS NULL OR
+        p.evaluator = sqlc.narg('evaluator')::text
+    )
+AND
+    (
+        -- Title search with wildcards handled in SQL
+        sqlc.narg('title_search')::text IS NULL OR
+        p.title ILIKE '%' || sqlc.arg('title_search')::text || '%'    
+    )
 ORDER BY
     p.created_at DESC
 LIMIT
     sqlc.arg('limit')
 OFFSET
     sqlc.arg('offset');
-
--- name: GetProblemAuth :one
-SELECT locks.id, locks.access, locks.timeout
-FROM problems
-LEFT JOIN locks ON problems.lock_id = locks.id
-WHERE problems.id = $1;

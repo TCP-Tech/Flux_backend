@@ -56,13 +56,11 @@ func (c *ContestService) RegisterUsersToContest(
 	// unregister previous users
 	err = qtx.UnRegisterContestUsers(ctx, contestID)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot unregister users of contest with id %v, %w",
-			flux_errors.ErrInternal,
-			contestID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot unregister users of contest %v", contestID),
 		)
-		log.Error(err)
 		return err
 	}
 

@@ -145,8 +145,6 @@ func (a *AuthService) validateVerificationToken(
 		); invErr != nil {
 			// failed to invalidate. log the error
 			invLogger.Errorf("failed to invalidate expired token, %v", invErr)
-		} else {
-			invLogger.Info("invalidated expired token")
 		}
 
 		// return expiration error
@@ -227,7 +225,7 @@ func (a *AuthService) verifyToken(
 	// check if token is correct
 	err = bcrypt.CompareHashAndPassword([]byte(dbToken.HashedToken), []byte(token))
 	if err != nil {
-		log.Infof("invalid token. failed to match token hash and token, %v", err)
+		log.Warnf("invalid token. failed to match token hash and token, %v", err)
 		err = fmt.Errorf("%w, please cross check your token", flux_errors.ErrCorruptedVerification)
 		return
 	}

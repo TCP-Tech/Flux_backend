@@ -4,10 +4,10 @@ VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetUserByUserName :one
-SELECT * FROM users WHERE user_name = $1;
+SELECT id, user_name, roll_no FROM users WHERE user_name = $1;
 
 -- name: GetUserByRollNumber :one
-SELECT * FROM users WHERE roll_no = $1;
+SELECT id, user_name, roll_no FROM users WHERE roll_no = $1;
 
 -- name: GetUsersCountByUserName :one
 SELECT COUNT(*) FROM users WHERE user_name = $1;

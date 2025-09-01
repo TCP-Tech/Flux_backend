@@ -39,7 +39,7 @@ func InitializeServices(mainPool *pgxpool.Pool) {
 }
 
 func initValidator() *validator.Validate {
-	log.Info("initializing validator")
+	log.Info("initializing go/playground service validator")
 	validate := validator.New(validator.WithRequiredStructEnabled())
 
 	// This makes error.Field() return "first_name" instead of "FirstName"

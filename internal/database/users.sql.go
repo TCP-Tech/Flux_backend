@@ -70,42 +70,36 @@ func (q *Queries) GetUserById(ctx context.Context, id uuid.UUID) (User, error) {
 }
 
 const getUserByRollNumber = `-- name: GetUserByRollNumber :one
-SELECT id, roll_no, user_name, first_name, last_name, email, password_hash, created_at FROM users WHERE roll_no = $1
+SELECT id, user_name, roll_no FROM users WHERE roll_no = $1
 `
 
-func (q *Queries) GetUserByRollNumber(ctx context.Context, rollNo string) (User, error) {
+type GetUserByRollNumberRow struct {
+	ID       uuid.UUID `json:"id"`
+	UserName string    `json:"user_name"`
+	RollNo   string    `json:"roll_no"`
+}
+
+func (q *Queries) GetUserByRollNumber(ctx context.Context, rollNo string) (GetUserByRollNumberRow, error) {
 	row := q.db.QueryRow(ctx, getUserByRollNumber, rollNo)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.RollNo,
-		&i.UserName,
-		&i.FirstName,
-		&i.LastName,
-		&i.Email,
-		&i.PasswordHash,
-		&i.CreatedAt,
-	)
+	var i GetUserByRollNumberRow
+	err := row.Scan(&i.ID, &i.UserName, &i.RollNo)
 	return i, err
 }
 
 const getUserByUserName = `-- name: GetUserByUserName :one
-SELECT id, roll_no, user_name, first_name, last_name, email, password_hash, created_at FROM users WHERE user_name = $1
+SELECT id, user_name, roll_no FROM users WHERE user_name = $1
 `
 
-func (q *Queries) GetUserByUserName(ctx context.Context, userName string) (User, error) {
+type GetUserByUserNameRow struct {
+	ID       uuid.UUID `json:"id"`
+	UserName string    `json:"user_name"`
+	RollNo   string    `json:"roll_no"`
+}
+
+func (q *Queries) GetUserByUserName(ctx context.Context, userName string) (GetUserByUserNameRow, error) {
 	row := q.db.QueryRow(ctx, getUserByUserName, userName)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.RollNo,
-		&i.UserName,
-		&i.FirstName,
-		&i.LastName,
-		&i.Email,
-		&i.PasswordHash,
-		&i.CreatedAt,
-	)
+	var i GetUserByUserNameRow
+	err := row.Scan(&i.ID, &i.UserName, &i.RollNo)
 	return i, err
 }
 

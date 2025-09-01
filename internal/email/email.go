@@ -56,7 +56,7 @@ func NewMail(
 		bodyType: bodyType,
 		purpose:  purpose,
 	}
-	// when all the workers it shouldn't block indefinetely
+	// when all the workers are dead, it shouldn't block indefinetely
 	select {
     case <-ctx.Done():
         // The context was canceled or timed out, so we return an error.

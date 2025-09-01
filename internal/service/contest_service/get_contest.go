@@ -2,8 +2,6 @@ package contest_service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,7 +10,6 @@ import (
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
-	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func (c *ContestService) GetContestByID(
@@ -25,21 +22,12 @@ func (c *ContestService) GetContestByID(
 		id,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Contest{}, fmt.Errorf(
-				"%w, contest with id %v does not exist",
-				flux_errors.ErrInvalidRequest,
-				id,
-			)
-		}
-		err = fmt.Errorf(
-			"%w, cannot fetch contest with id %v from db, %w",
-			flux_errors.ErrInternal,
-			id,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("failed to fetch contest with id %v", id),
 		)
-		log.Error(err)
-		return Contest{}, err
+		return Contest{}, nil
 	}
 
 	return dbContestToServiceContest(dbContest)
@@ -76,7 +64,7 @@ func (c *ContestService) GetContestsByFilters(
 			request,
 			err,
 		)
-		log.Error(err)
+		log.WithField("request", request).Error(err)
 		return nil, err
 	}
 
@@ -104,12 +92,6 @@ func (c *ContestService) GetContestsByFilters(
 		}
 		utcStartTime := startTime.UTC()
 
-		var lockAccess *user_service.UserRole
-		if dbContest.LockAccess != nil {
-			la := user_service.UserRole(*dbContest.LockAccess)
-			lockAccess = &la
-		}
-
 		contest := Contest{
 			ID:          dbContest.ID,
 			Title:       dbContest.Title,
@@ -118,7 +100,7 @@ func (c *ContestService) GetContestsByFilters(
 			EndTime:     dbContest.EndTime.UTC(),
 			IsPublished: dbContest.IsPublished,
 			CreatedBy:   dbContest.CreatedBy,
-			LockAccess:  lockAccess,
+			LockAccess:  dbContest.LockAccess,
 			LockTimeout: dbContest.LockTimeout,
 		}
 
@@ -142,13 +124,11 @@ func (c *ContestService) GetUserRegisteredContests(
 	// get the contest ids
 	contestIDs, err := c.DB.GetUserRegisteredContests(ctx, claims.UserId)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot fetch registered contests of user %s",
-			flux_errors.ErrInternal,
-			claims.UserName,
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf("cannot fetch registered contests of user %s", claims.UserName),
 		)
-		log.Error(err)
-		return nil, err
 	}
 
 	// check for empty

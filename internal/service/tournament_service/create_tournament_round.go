@@ -2,12 +2,9 @@ package tournament_service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
-	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
@@ -33,7 +30,7 @@ func (t *TournamentService) CreateTournamentRound(
 		return TournamentRound{}, err
 	}
 
-	// get the previous tournament
+	// get the tournament
 	tournament, err := t.GetTournamentByID(ctx, tournamentRound.TournamentID)
 	if err != nil {
 		return TournamentRound{}, err
@@ -42,13 +39,14 @@ func (t *TournamentService) CreateTournamentRound(
 	// check if previous round ended
 	endTime, err := t.DB.GetTournamentLatestRoundEndTime(ctx, tournamentRound.TournamentID)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot get previous round end time of tournament %v, %w",
-			flux_errors.ErrInternal,
-			tournamentRound.TournamentID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf(
+				"cannot get latest tournament round's (id = %v) end time",
+				tournamentRound.TournamentID,
+			),
 		)
-		log.Error(err)
 		return TournamentRound{}, err
 	}
 	if time.Now().Before(endTime.UTC()) {
@@ -87,33 +85,12 @@ func (t *TournamentService) CreateTournamentRound(
 		},
 	)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		// check if its not a known error from client side
-		if !errors.As(err, &pgErr) ||
-			pgErr.Code != flux_errors.CodeForeignKeyConstraint {
-			err = fmt.Errorf(
-				"%w, cannot create tournament round, %w",
-				flux_errors.ErrInternal,
-				err,
-			)
-			log.Error(err)
-			return TournamentRound{}, err
-		}
-
-		// its a foreign key error, check which one
-		msg, ok := dbConstraintMessages[pgErr.ConstraintName]
-		if !ok {
-			msg = pgErr.Detail
-			log.Errorf(
-				"unknown foreign key error while creating a tournament round: %s",
-				pgErr.ConstraintName,
-			)
-		}
-		return TournamentRound{}, fmt.Errorf(
-			"%w, %s",
-			flux_errors.ErrInvalidRequest,
-			msg,
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf("cannot create new round for tournament with id %v", tournament.ID),
 		)
+		return TournamentRound{}, err
 	}
 
 	// return response

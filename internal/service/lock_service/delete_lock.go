@@ -2,11 +2,9 @@ package lock_service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
@@ -48,19 +46,12 @@ func (l *LockService) DeleteLock(ctx context.Context, lockId uuid.UUID) error {
 	}
 	err = l.DB.DeleteLockById(ctx, lockId)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == flux_errors.CodeForeignKeyConstraint {
-				return fmt.Errorf(
-					"%w, %w",
-					flux_errors.ErrInvalidRequest,
-					pgErr,
-				)
-			}
-		}
-		return fmt.Errorf(
-			"%w, %w", flux_errors.ErrInternal, err,
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			"lock cannot be deleted",
 		)
+		return err
 	}
 
 	return nil

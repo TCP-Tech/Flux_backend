@@ -8,15 +8,15 @@ import (
 
 	jwt "github.com/golang-jwt/jwt/v4"
 	log "github.com/sirupsen/logrus"
-	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 	"golang.org/x/crypto/bcrypt"
 )
 
 func dbUserToUserCredClaims(
 	expirationTime time.Time,
-	user database.User,
+	user user_service.User,
 ) service.UserCredentialClaims {
 	return service.UserCredentialClaims{
 		UserId:   user.ID,
@@ -27,16 +27,6 @@ func dbUserToUserCredClaims(
 			Subject:   "user_authentication",              // Purpose of the token
 			Issuer:    "flux-auth-service",                // Who issued the token
 		},
-	}
-}
-
-func dbUserToLoginRes(roles []string, dbUser database.User) UserLoginResponse {
-	return UserLoginResponse{
-		UserName:  dbUser.UserName,
-		RollNo:    dbUser.RollNo,
-		FirstName: dbUser.FirstName,
-		LastName:  dbUser.LastName,
-		Roles:     roles,
 	}
 }
 

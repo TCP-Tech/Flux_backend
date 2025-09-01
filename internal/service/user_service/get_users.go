@@ -4,26 +4,47 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
 )
 
-func (u *UserService) GetUserByUserNameOrRollNo(
+func (u *UserService) GetUserProfile(
 	ctx context.Context,
-	userName string,
-	rollNo string,
-) (dbUser database.User, err error) {
-	if userName == "" && rollNo == "" {
-		err = fmt.Errorf("%w, either user_name or roll_no must be provided", flux_errors.ErrInvalidRequest)
-		return
+	userID uuid.UUID,
+) (User, error) {
+	// get user from db
+	dbUser, err := u.DB.GetUserById(ctx, userID)
+	if err != nil {
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf("cannot fetch user with id %v from db", userID),
+		)
+		return User{}, err
 	}
-	if userName != "" {
-		dbUser, err = u.FetchUserByUserName(ctx, userName)
-	} else {
-		dbUser, err = u.FetchUserByRollNo(ctx, rollNo)
+
+	// convert and return
+	return User{
+		ID:           dbUser.ID,
+		RollNo:       dbUser.RollNo,
+		UserName:     dbUser.UserName,
+		FirstName:    dbUser.FirstName,
+		LastName:     dbUser.LastName,
+		Email:        dbUser.Email,
+		PasswordHash: dbUser.PasswordHash,
+	}, nil
+}
+
+func (u *UserService) GetMe(ctx context.Context) (User, error) {
+	claims, err := service.GetClaimsFromContext(ctx)
+	if err != nil {
+		return User{}, err
 	}
-	return
+
+	return u.GetUserProfile(ctx, claims.UserId)
 }
 
 func (u *UserService) GetUsersByFilters(
@@ -47,6 +68,14 @@ func (u *UserService) GetUsersByFilters(
 		Limit:     request.PageSize,
 		Offset:    offset,
 	})
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot fetch users by filters from db",
+			flux_errors.ErrInternal,
+		)
+		log.WithField("request", request).Error(err)
+		return nil, err
+	}
 
 	// convert to user metadata
 	res := make([]UserMetaData, 0, len(dbUsers))

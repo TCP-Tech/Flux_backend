@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
@@ -45,12 +44,11 @@ func (l *LockService) CreateLock(
 		Description: lock.Description,
 	})
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot create lock, %w",
-			flux_errors.ErrInternal,
+		flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			"cannot create lock",
 		)
-		log.Error(err)
 		return FluxLock{}, err
 	}
 

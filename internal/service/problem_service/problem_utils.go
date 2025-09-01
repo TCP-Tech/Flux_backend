@@ -2,26 +2,42 @@ package problem_service
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
-	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func (p *ProblemService) validateProblem(
-	ctx context.Context,
-	problem Problem,
+	ap Problem,
 ) error {
+	// raw validations
+	err := service.ValidateInput(ap)
+	if err != nil {
+		return err
+	}
+
+	// validate its lock
+	if ap.LockTimeout != nil {
+		if time.Now().After(*ap.LockTimeout) {
+			return fmt.Errorf(
+				"%w, expired lock cannot be used to create problem",
+				flux_errors.ErrInvalidRequest,
+			)
+		}
+	}
+
+	return nil
+}
+
+func (p *ProblemService) validateStandardProblemData(spd StandardProblemData) error {
 	// perform validation using validator first
-	err := service.ValidateInput(problem)
+	err := service.ValidateInput(spd)
 	if err != nil {
 		return err
 	}
@@ -29,15 +45,15 @@ func (p *ProblemService) validateProblem(
 	// -- extra validations --
 
 	// validate examples
-	if problem.ExampleTCs != nil {
-		if problem.ExampleTCs.NumTestCases != nil {
-			if *problem.ExampleTCs.NumTestCases != len(problem.ExampleTCs.Examples) {
+	if spd.ExampleTestCases != nil {
+		if spd.ExampleTestCases.NumTestCases != nil {
+			if *spd.ExampleTestCases.NumTestCases != len(spd.ExampleTestCases.Examples) {
 				return fmt.Errorf(
 					"%w, num_test_cases != number of example test cases provided",
 					flux_errors.ErrInvalidRequest,
 				)
 			}
-		} else if len(problem.ExampleTCs.Examples) > 1 {
+		} else if len(spd.ExampleTestCases.Examples) > 1 {
 			return fmt.Errorf(
 				"%w, num_test_cases is nil but number of example test cases are plural",
 				flux_errors.ErrInvalidRequest,
@@ -45,168 +61,158 @@ func (p *ProblemService) validateProblem(
 		}
 	}
 
-	// validate platform
-	if problem.Platform != nil {
-		if problem.SubmissionLink == nil {
-			return fmt.Errorf("%w, platform is provided but submission link is not provided", flux_errors.ErrInvalidRequest)
-		}
-		_, err = p.DB.CheckPlatformType(ctx, database.Platform(*problem.Platform))
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) {
-				// code for invalid input value
-				if pgErr.Code == "22P02" {
-					log.Error(pgErr)
-					return fmt.Errorf("%w, invalid platform type provided", flux_errors.ErrInvalidRequest)
-				}
-			}
-			// Handle any other database errors (e.g., connection failure)
-			log.Error("%w, unable to cast platform type", err)
-			return fmt.Errorf("%w, unable to cast platform type, %w", flux_errors.ErrInternal, err)
-		}
-	} else if problem.SubmissionLink != nil {
-		return fmt.Errorf("%w, submission link is provided but platform is not provided", flux_errors.ErrInvalidRequest)
-	}
-
-	// lock has different validations for different purposes
-
 	return nil
 }
 
-// getDBProblemDataFromProblem converts a service Problem struct to a database DBProblemData.
-// The nullable fields are correctly prepared here.
-func getDBProblemDataFromProblem(problem Problem) (dbProblemData, error) {
-	var exampleTestCases *json.RawMessage
-	if problem.ExampleTCs != nil {
-		bytes, marsErr := json.Marshal(*problem.ExampleTCs)
-		if marsErr != nil {
-			err := fmt.Errorf(
-				"%w, cannot marshal %v, %w",
-				flux_errors.ErrInternal,
-				problem.ExampleTCs,
-				marsErr,
-			)
-			log.Error(err)
-			return dbProblemData{}, err
-		}
-		rawMessage := json.RawMessage(bytes)
-		exampleTestCases = &rawMessage
+func getDbSpdParams(
+	functionDefinitions map[string]string,
+	exampleTestCases *ExampleTestCases,
+) (dbSpdParams, error) {
+	// marshal function definitions
+	fdBytes, err := json.Marshal(functionDefinitions)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot marshal %v, %w",
+			flux_errors.ErrInternal,
+			functionDefinitions,
+			err,
+		)
+		logrus.Error(err)
+		return dbSpdParams{}, err
+	}
+	// marshal example testcases
+	etcsBytes, err := json.Marshal(exampleTestCases)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot marshal %v, %w",
+			flux_errors.ErrInternal,
+			exampleTestCases,
+			err,
+		)
+		logrus.Error(err)
+		return dbSpdParams{}, err
 	}
 
-	var platformType database.NullPlatform
-	if problem.Platform != nil {
-		platformType.Valid = true
-		platformType.Platform = database.Platform(*problem.Platform)
-	}
+	// wrap in json.RawMessage
+	fdJson := json.RawMessage(fdBytes)
+	etcsJson := json.RawMessage(etcsBytes)
 
-	return dbProblemData{
-		exampleTestCases: exampleTestCases,
-		platformType:     platformType,
+	return dbSpdParams{
+		FunctionDefinitions: &fdJson,
+		ExampleTestCases:    &etcsJson,
 	}, nil
 }
 
-func getServiceProblemData(
-	exampleTestCasesJson *json.RawMessage,
-	dbPlatformType database.NullPlatform,
-) (serviceProblemData, error) {
-	// unmarshal
-	var exampleTestCases *ExampleTestCases
-	if exampleTestCasesJson != nil {
-		var etcs ExampleTestCases
-		marsErr := json.Unmarshal([]byte(*exampleTestCasesJson), &etcs)
-		if marsErr != nil {
-			err := fmt.Errorf(
-				"%w, cannot unamrshal %v, %w",
+func dbSpdToServiceSpd(
+	dbSpd database.StandardProblemDatum,
+) (StandardProblemData, error) {
+	var fd map[string]string
+	var etcs *ExampleTestCases
+
+	// unmarshal fd
+	if dbSpd.FunctionDefinitons != nil {
+		err := json.Unmarshal([]byte(*dbSpd.FunctionDefinitons), &fd)
+		if err != nil {
+			err = fmt.Errorf(
+				"%w, cannot unmarshal %v, %w",
 				flux_errors.ErrInternal,
-				exampleTestCasesJson,
-				marsErr,
+				dbSpd.FunctionDefinitons,
+				err,
 			)
 			log.Error(err)
-			return serviceProblemData{}, err
+			return StandardProblemData{}, err
 		}
-		exampleTestCases = &etcs
 	}
 
-	var platformType *Platform
-	if dbPlatformType.Valid {
-		pt := Platform(dbPlatformType.Platform)
-		platformType = &pt
+	// unmarshal etcs
+	if dbSpd.ExampleTestcases != nil {
+		var e ExampleTestCases
+		err := json.Unmarshal([]byte(*dbSpd.ExampleTestcases), &e)
+		if err != nil {
+			err = fmt.Errorf(
+				"%w, cannot unmarshal %v, %w",
+				flux_errors.ErrInternal,
+				dbSpd.ExampleTestcases,
+				err,
+			)
+			log.Error(err)
+			return StandardProblemData{}, err
+		}
+		etcs = &e
 	}
 
-	return serviceProblemData{
-		exampleTestCases: exampleTestCases,
-		platformType:     platformType,
+	return StandardProblemData{
+		ProblemID:           dbSpd.ProblemID,
+		Statement:           dbSpd.Statement,
+		InputFormat:         dbSpd.InputFormat,
+		OutputFormat:        dbSpd.OutputFormat,
+		FunctionDefinitions: fd,
+		ExampleTestCases:    etcs,
+		Notes:               dbSpd.Notes,
+		MemoryLimitKB:       dbSpd.MemoryLimitKb,
+		TimeLimitMS:         dbSpd.TimeLimitMs,
+		SubmissionLink:      dbSpd.SubmissionLink,
 	}, nil
+
 }
 
-func dbProblemToServiceProblem(
-	dbProblem database.Problem,
+func insertProblemToDB(
+	ctx context.Context,
+	qtx *database.Queries,
+	problem Problem,
 ) (Problem, error) {
-	serviceProbData, err := getServiceProblemData(
-		dbProblem.ExampleTestcases,
-		dbProblem.Platform,
-	)
+	// get claims
+	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
 		return Problem{}, err
 	}
 
+	dbProblem, err := qtx.AddProblem(ctx, database.AddProblemParams{
+		Title:         problem.Title,
+		Difficulty:    problem.Difficulty,
+		Evaluator:     problem.Evaluator,
+		LockID:        problem.LockID,
+		CreatedBy:     claims.UserId,
+		LastUpdatedBy: claims.UserId,
+	})
+	if err != nil {
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			"failed to insert problem into db",
+		)
+		return Problem{}, err
+	}
+
+	// convert and return
 	return Problem{
-		ID:             dbProblem.ID,
-		Title:          dbProblem.Title,
-		Statement:      dbProblem.Statement,
-		InputFormat:    dbProblem.InputFormat,
-		OutputFormat:   dbProblem.OutputFormat,
-		Notes:          dbProblem.Notes,
-		MemoryLimitKb:  dbProblem.MemoryLimitKb,
-		TimeLimitMs:    dbProblem.TimeLimitMs,
-		Difficulty:     dbProblem.Difficulty,
-		SubmissionLink: dbProblem.SubmissionLink,
-		CreatedBy:      dbProblem.CreatedBy,
-		LastUpdatedBy:  dbProblem.LastUpdatedBy,
-		ExampleTCs:     serviceProbData.exampleTestCases,
-		Platform:       serviceProbData.platformType,
-		LockId:         dbProblem.LockID,
+		ID:         dbProblem.ID,
+		Title:      dbProblem.Title,
+		Difficulty: dbProblem.Difficulty,
+		Evaluator:  dbProblem.Evaluator,
+		LockID:     dbProblem.LockID,
+		CreatedBy:  dbProblem.CreatedBy,
 	}, nil
 }
 
-func (p *ProblemService) AuthorizeProblem(
+// helper function to update problem
+// since there can be various types of problems and each type has its own update
+// method, this helps in avoiding code duplicacy
+func updateProblem(
 	ctx context.Context,
-	id int32,
-	warnMessage string,
-) (*uuid.UUID, error) {
-	// get lockID
-	auth, err := p.DB.GetProblemAuth(ctx, id)
+	qtx *database.Queries,
+	params database.UpdateProblemParams,
+) (database.Problem, error) {
+	// update problem
+	dbProblem, err := qtx.UpdateProblem(ctx, params)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf(
-				"%w, no problem exist with given id",
-				flux_errors.ErrInvalidRequest,
-			)
-			return nil, err
-		}
-	}
-
-	// authorize
-	if auth.ID != nil {
-		if auth.Access == nil {
-			err = fmt.Errorf(
-				"%w, lock with id %v has access as nil",
-				flux_errors.ErrInternal,
-				auth.ID,
-			)
-			log.Error(err)
-			return nil, err
-		}
-		err = p.LockServiceConfig.AuthorizeLock(
-			ctx,
-			auth.Timeout,
-			user_service.UserRole(*auth.Access),
-			warnMessage,
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf("failed to update problem with id %v", dbProblem.ID),
 		)
-		if err != nil {
-			return nil, err
-		}
+		return database.Problem{}, err
 	}
 
-	return auth.ID, nil
+	return dbProblem, nil
 }

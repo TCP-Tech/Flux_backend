@@ -2,11 +2,8 @@ package problem_service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
@@ -14,14 +11,15 @@ import (
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
-func (p *ProblemService) AddProblem(
+func (p *ProblemService) AddStandardProblem(
 	ctx context.Context,
-	problem Problem,
-) (Problem, error) {
+	problemRequest Problem,
+	spdRequest StandardProblemData,
+) (Problem, StandardProblemData, error) {
 	// get the user details from claims
 	claims, err := service.GetClaimsFromContext(ctx)
 	if err != nil {
-		return Problem{}, err
+		return Problem{}, StandardProblemData{}, err
 	}
 
 	// authorize (only managers can add problems)
@@ -33,102 +31,91 @@ func (p *ProblemService) AddProblem(
 		),
 	)
 	if err != nil {
-		return Problem{}, err
+		return Problem{}, StandardProblemData{}, err
 	}
 
-	// validate the problem
-	err = p.validateProblem(ctx, problem)
+	// validate problem
+	if problemRequest.LockID != nil {
+		lock, err := p.LockServiceConfig.GetLockById(ctx, *problemRequest.LockID)
+		if err != nil {
+			return Problem{}, StandardProblemData{}, err
+		}
+		problemRequest.LockTimeout = lock.Timeout
+		problemRequest.LockAccess = &lock.Access
+	}
+	err = p.validateProblem(problemRequest)
 	if err != nil {
-		return Problem{}, err
+		return Problem{}, StandardProblemData{}, err
 	}
 
-	// validate lock
-	if problem.LockId != nil {
-		// get the lock (authorizes by default)
-		lock, err := p.LockServiceConfig.GetLockById(
-			ctx,
-			*problem.LockId,
+	// validate the data
+	if err = p.validateStandardProblemData(spdRequest); err != nil {
+		return Problem{}, StandardProblemData{}, err
+	}
+
+	// create a transaction
+	tx, err := service.GetNewTransaction(ctx)
+	if err != nil {
+		return Problem{}, StandardProblemData{}, err
+	}
+
+	// crate a query tool with tx
+	qtx := p.DB.WithTx(tx)
+	defer tx.Rollback(ctx)
+
+	// insert the problem first
+	problemResponse, err := insertProblemToDB(ctx, qtx, problemRequest)
+	if err != nil {
+		return Problem{}, StandardProblemData{}, err
+	}
+
+	// insert the spd
+	spdParams, err := getDbSpdParams(
+		spdRequest.FunctionDefinitions,
+		spdRequest.ExampleTestCases,
+	)
+	if err != nil {
+		return Problem{}, StandardProblemData{}, err
+	}
+	dbSPD, err := qtx.AddStandardProblemData(ctx, database.AddStandardProblemDataParams{
+		ProblemID:          problemResponse.ID,
+		Statement:          spdRequest.Statement,
+		InputFormat:        spdRequest.InputFormat,
+		OutputFormat:       spdRequest.OutputFormat,
+		FunctionDefinitons: spdParams.FunctionDefinitions,
+		ExampleTestcases:   spdParams.ExampleTestCases,
+		Notes:              spdRequest.Notes,
+		MemoryLimitKb:      spdRequest.MemoryLimitKB,
+		TimeLimitMs:        spdRequest.TimeLimitMS,
+		SubmissionLink:     spdRequest.SubmissionLink,
+	})
+	if err != nil {
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			"failed to insert standard_problem_data into db",
 		)
-		if err != nil {
-			return Problem{}, err
-		}
-		
-		// validate the expiry
-		exp, err := p.LockServiceConfig.IsLockExpired(lock, 5)
-		if err != nil {
-			return Problem{}, err
-		}
-		if exp {
-			return Problem{}, fmt.Errorf(
-				"%w, lock's expiry must be atleast 5 mins from now",
-				flux_errors.ErrInvalidRequest,
-			)
-		}
+		return Problem{}, StandardProblemData{}, err
 	}
 
-	// convert service params to db params
-	params, err := getAddProblemParams(claims.UserId, problem)
+	// 1. convert to service data
+	// 2. even though its the same data as in request, its best practice
+	//    to always convert the data from db to service and return
+	spdResponse, err := dbSpdToServiceSpd(dbSPD)
 	if err != nil {
-		return Problem{}, err
+		return Problem{}, StandardProblemData{}, err
 	}
 
-	// insert the problem into db
-	dbProblem, err := p.DB.AddProblem(ctx, params)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == flux_errors.CodeUniqueConstraintViolation {
-				err = fmt.Errorf(
-					"%w, %s problem with that key already exist",
-					flux_errors.ErrInvalidRequest,
-					pgErr.Detail,
-				)
-				return Problem{}, err
-			}
-		}
+	// commit the tx
+	if err = tx.Commit(ctx); err != nil {
 		err = fmt.Errorf(
-			"%w, unable to insert problem into database, %w",
+			"%w, cannot commit transaction while adding a standard problem to db, %w",
 			flux_errors.ErrInternal,
 			err,
 		)
 		log.Error(err)
-		return Problem{}, err
+		return Problem{}, StandardProblemData{}, err
 	}
 
-	log.Infof(
-		"problem with id %v was created successfully by user %s",
-		dbProblem.ID,
-		claims.UserName,
-	)
-
-	problem, err = dbProblemToServiceProblem(dbProblem)
-	return problem, err
-}
-
-// getDatabaseProblemParams prepares the parameters for adding a problem to the database.
-func getAddProblemParams(
-	userId uuid.UUID,
-	problem Problem,
-) (database.AddProblemParams, error) {
-	dbProblemData, err := getDBProblemDataFromProblem(problem)
-	if err != nil {
-		return database.AddProblemParams{}, err
-	}
-
-	// Map fields to AddProblemParams
-	return database.AddProblemParams{
-		Title:            problem.Title,
-		Statement:        problem.Statement,
-		InputFormat:      problem.InputFormat,
-		OutputFormat:     problem.OutputFormat,
-		ExampleTestcases: dbProblemData.exampleTestCases, // Note: Typo in field name, should be ExampleTestcases if that's the intended field
-		Notes:            problem.Notes,
-		MemoryLimitKb:    problem.MemoryLimitKb,
-		TimeLimitMs:      problem.TimeLimitMs,
-		CreatedBy:        userId,
-		Difficulty:       problem.Difficulty,
-		SubmissionLink:   problem.SubmissionLink,
-		Platform:         dbProblemData.platformType,
-		LockID:           problem.LockId,
-	}, nil
+	return problemResponse, spdResponse, nil
 }

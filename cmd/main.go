@@ -115,7 +115,7 @@ func initTournamentService(
 	}
 }
 
-func initApi(pool *pgxpool.Pool, db *database.Queries) *api.Api {
+func initApi(db *database.Queries) *api.Api {
 	log.Info("initializing api config")
 	us := initUserService(db)
 	log.Info("user service created")
@@ -131,6 +131,7 @@ func initApi(pool *pgxpool.Pool, db *database.Queries) *api.Api {
 	log.Info("tournament service created")
 	a := api.Api{
 		AuthServiceConfig:       as,
+		UserServiceConfig:       us,
 		ProblemServiceConfig:    ps,
 		LockServiceConfig:       ls,
 		ContestServiceConfig:    cs,
@@ -146,10 +147,11 @@ func setup() {
 		ForceColors: true,
 		// Add the full timestamp
 		FullTimestamp: true,
+		PadLevelText: false,
 	})
 	pool, db := initDatabase()
 	service.InitializeServices(pool)
-	apiConfig = initApi(pool, db)
+	apiConfig = initApi(db)
 	email.StartEmailWorkers(1)
 }
 

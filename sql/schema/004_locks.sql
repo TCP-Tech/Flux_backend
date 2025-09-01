@@ -9,20 +9,21 @@ CREATE TABLE locks (
     created_by UUID NOT NULL REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     description TEXT NOT NULL DEFAULT '',
-    access VARCHAR(50) NOT NULL DEFAULT 'role_manager'
-           REFERENCES roles(role_name),
+    access VARCHAR(50) NOT NULL DEFAULT 'role_manager',
     lock_type  lock_type NOT NULL,
     timeout    TIMESTAMP WITH TIME ZONE,
 
     -- Enforce mutual exclusivity using CHECK constraints
-    -- A manual lock must have a 'locked' value and no 'timeout'
     CHECK (
         (lock_type = 'manual' AND timeout IS NULL)
         OR
-    -- A timer lock must have a 'timeout' value and no 'locked' value
         (lock_type = 'timer' AND timeout IS NOT NULL)
-    )
+    ),
+
+    -- Foreign key for access moved out separately
+    CONSTRAINT fk_locks_access FOREIGN KEY (access) REFERENCES roles(role_name)
 );
+
 
 -- +goose Down
 DROP TABLE locks;

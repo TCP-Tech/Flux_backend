@@ -6,21 +6,16 @@ import (
 	"net/http"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/tcp_snm/flux/internal/service/auth_service"
 	"github.com/tcp_snm/flux/middleware"
 )
 
 func (a *Api) HandlerLogin(w http.ResponseWriter, r *http.Request) {
 	// extract user details for login
-	type params struct {
-		UserName         string `json:"user_name"`
-		RollNo           string `json:"roll_no"`
-		Password         string `json:"password"`
-		RememberForMonth bool   `json:"remember_for_month"`
-	}
-	var param params
+	var request auth_service.UserLoginRequest
 
 	// decode from the json body
-	err := decodeJsonBody(r.Body, &param)
+	err := decodeJsonBody(r.Body, &request)
 	if err != nil {
 		msg := fmt.Sprintf("invalid request payload, %s", err.Error())
 		http.Error(w, msg, http.StatusBadRequest)
@@ -30,10 +25,7 @@ func (a *Api) HandlerLogin(w http.ResponseWriter, r *http.Request) {
 	// validate the user and gen a jwt token
 	userLoginResponse, jwtToken, tokenExpiry, err := a.AuthServiceConfig.Login(
 		r.Context(),
-		param.UserName,
-		param.RollNo,
-		param.Password,
-		param.RememberForMonth,
+		request,
 	)
 	if err != nil {
 		handlerError(err, w)

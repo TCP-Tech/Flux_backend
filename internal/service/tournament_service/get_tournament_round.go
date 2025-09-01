@@ -2,8 +2,6 @@ package tournament_service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -11,7 +9,6 @@ import (
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service/contest_service"
-	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 func (t *TournamentService) GetTournamentRound(
@@ -28,27 +25,12 @@ func (t *TournamentService) GetTournamentRound(
 		},
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return TournamentRound{}, nil, fmt.Errorf(
-				"%w, invalid tournament id or round number",
-				flux_errors.ErrInvalidRequest,
-			)
-		}
-		// unknown error
-		err = fmt.Errorf(
-			"%w, cannot fetch round %v of tournament %v, %w",
-			flux_errors.ErrInternal,
-			roundNumber,
-			tournamentID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot fetch tournament with id %v from db", tournamentID),
 		)
-		log.Error(err)
 		return TournamentRound{}, nil, err
-	}
-
-	var access user_service.UserRole
-	if round.Access != nil {
-		access = user_service.UserRole(*round.Access)
 	}
 
 	// create a service TournamentRound
@@ -59,7 +41,7 @@ func (t *TournamentService) GetTournamentRound(
 		RoundNumber:  round.RoundNumber,
 		LockID:       round.LockID,
 		CreatedBy:    round.CreatedBy,
-		LockAccess:   &access,
+		LockAccess:   round.Access,
 		LockTimeout:  round.Timeout,
 	}
 
@@ -90,14 +72,11 @@ func (t *TournamentService) GetTournamentRound(
 	// fetch contests
 	contestIDs, err := t.DB.GetTournamentContests(ctx, round.ID)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot fetch contests of round %v of tournament %v, %w",
-			flux_errors.ErrInternal,
-			roundNumber,
-			tournamentID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot fetch contest of tournament round with id %v", round.ID),
 		)
-		log.Error(err)
 		return TournamentRound{}, nil, err
 	}
 

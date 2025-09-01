@@ -10,16 +10,9 @@ import (
 )
 
 func (a *Api) HandlerSignUp(w http.ResponseWriter, r *http.Request) {
-	// extract the verification token
-	verificationToken, err := extractAuthToken(r.Header)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
 	// decode the data from body
 	var userRegestration auth_service.UserRegestration
-	err = decodeJsonBody(r.Body, &userRegestration)
+	err := decodeJsonBody(r.Body, &userRegestration)
 	if err != nil {
 		msg := fmt.Sprintf("invalid request payload, %s", err.Error())
 		http.Error(w, msg, http.StatusBadRequest)
@@ -30,7 +23,6 @@ func (a *Api) HandlerSignUp(w http.ResponseWriter, r *http.Request) {
 	user, err := a.AuthServiceConfig.SignUp(
 		r.Context(),
 		userRegestration,
-		verificationToken,
 	)
 	if err != nil {
 		handlerError(err, w)
@@ -48,5 +40,6 @@ func (a *Api) HandlerSignUp(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+
 	respondWithJson(w, http.StatusCreated, response_bytes)
 }

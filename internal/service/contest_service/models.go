@@ -10,6 +10,10 @@ import (
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
+var (
+	errMsgs = map[string]map[string]string{}
+)
+
 type ContestService struct {
 	DB                   *database.Queries
 	UserServiceConfig    *user_service.UserService
@@ -23,8 +27,8 @@ type ContestProblem struct {
 }
 
 type ContestProblemResponse struct {
-	ProblemData problem_service.ProblemMetaData `json:"problem_id"`
-	Score       int32                           `json:"score" validate:"min=0"`
+	ProblemData problem_service.Problem `json:"problem"`
+	Score       int32                   `json:"score" validate:"min=0"`
 }
 
 // used in requests
@@ -38,8 +42,8 @@ type Contest struct {
 	CreatedBy   uuid.UUID  `json:"created_by"`
 
 	// fields used only for internal purpose
-	LockAccess  *user_service.UserRole `json:"-"`
-	LockTimeout *time.Time             `json:"-"`
+	LockAccess  *string    `json:"-"`
+	LockTimeout *time.Time `json:"-"`
 }
 
 type CreateContestRequest struct {

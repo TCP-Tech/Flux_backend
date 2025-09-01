@@ -92,7 +92,10 @@ func (q *Queries) GetLockById(ctx context.Context, groupD uuid.UUID) (Lock, erro
 const getLocksByFilter = `-- name: GetLocksByFilter :many
 SELECT id, name, created_by, created_at, description, access, lock_type, timeout FROM locks
 WHERE
-    name ILIKE '%' || $1::text || '%'
+    (
+        $1::text IS NULL OR
+        name ILIKE '%' || $1::text || '%'
+    )
     AND (
         $2::uuid IS NULL OR
         $2::uuid = created_by
@@ -102,7 +105,7 @@ OFFSET $3
 `
 
 type GetLocksByFilterParams struct {
-	LockName  string     `json:"lock_name"`
+	LockName  *string    `json:"lock_name"`
 	CreatedBy *uuid.UUID `json:"created_by"`
 	Offset    int32      `json:"offset"`
 	Limit     int32      `json:"limit"`
