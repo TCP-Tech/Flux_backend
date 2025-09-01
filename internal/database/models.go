@@ -55,47 +55,6 @@ func (ns NullLockType) Value() (driver.Value, error) {
 	return string(ns.LockType), nil
 }
 
-type Platform string
-
-const (
-	PlatformCodeforces Platform = "codeforces"
-)
-
-func (e *Platform) Scan(src interface{}) error {
-	switch s := src.(type) {
-	case []byte:
-		*e = Platform(s)
-	case string:
-		*e = Platform(s)
-	default:
-		return fmt.Errorf("unsupported scan type for Platform: %T", src)
-	}
-	return nil
-}
-
-type NullPlatform struct {
-	Platform Platform `json:"platform"`
-	Valid    bool     `json:"valid"` // Valid is true if Platform is not NULL
-}
-
-// Scan implements the Scanner interface.
-func (ns *NullPlatform) Scan(value interface{}) error {
-	if value == nil {
-		ns.Platform, ns.Valid = "", false
-		return nil
-	}
-	ns.Valid = true
-	return ns.Platform.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (ns NullPlatform) Value() (driver.Value, error) {
-	if !ns.Valid {
-		return nil, nil
-	}
-	return string(ns.Platform), nil
-}
-
 type Bot struct {
 	ID          uuid.UUID        `json:"id"`
 	AccountName string           `json:"account_name"`
@@ -140,23 +99,15 @@ type Lock struct {
 }
 
 type Problem struct {
-	ID               int32            `json:"id"`
-	Title            string           `json:"title"`
-	Statement        string           `json:"statement"`
-	InputFormat      string           `json:"input_format"`
-	OutputFormat     string           `json:"output_format"`
-	ExampleTestcases *json.RawMessage `json:"example_testcases"`
-	Notes            *string          `json:"notes"`
-	MemoryLimitKb    int32            `json:"memory_limit_kb"`
-	TimeLimitMs      int32            `json:"time_limit_ms"`
-	CreatedBy        uuid.UUID        `json:"created_by"`
-	LastUpdatedBy    uuid.UUID        `json:"last_updated_by"`
-	CreatedAt        time.Time        `json:"created_at"`
-	UpdatedAt        time.Time        `json:"updated_at"`
-	Difficulty       int32            `json:"difficulty"`
-	SubmissionLink   *string          `json:"submission_link"`
-	Platform         NullPlatform     `json:"platform"`
-	LockID           *uuid.UUID       `json:"lock_id"`
+	ID            int32      `json:"id"`
+	Title         string     `json:"title"`
+	Difficulty    int32      `json:"difficulty"`
+	Evaluator     string     `json:"evaluator"`
+	LockID        *uuid.UUID `json:"lock_id"`
+	CreatedBy     uuid.UUID  `json:"created_by"`
+	LastUpdatedBy uuid.UUID  `json:"last_updated_by"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type Role struct {
@@ -167,6 +118,20 @@ type Solved struct {
 	UserID    uuid.UUID `json:"user_id"`
 	ContestID uuid.UUID `json:"contest_id"`
 	ProblemID uuid.UUID `json:"problem_id"`
+}
+
+type StandardProblemDatum struct {
+	ProblemID          int32            `json:"problem_id"`
+	Statement          string           `json:"statement"`
+	InputFormat        string           `json:"input_format"`
+	OutputFormat       string           `json:"output_format"`
+	FunctionDefinitons *json.RawMessage `json:"function_definitons"`
+	ExampleTestcases   *json.RawMessage `json:"example_testcases"`
+	Notes              *string          `json:"notes"`
+	MemoryLimitKb      int32            `json:"memory_limit_kb"`
+	TimeLimitMs        int32            `json:"time_limit_ms"`
+	SubmissionLink     *string          `json:"submission_link"`
+	LastUpdatedBy      uuid.UUID        `json:"last_updated_by"`
 }
 
 type Submission struct {

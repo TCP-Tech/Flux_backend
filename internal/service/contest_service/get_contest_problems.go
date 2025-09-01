@@ -30,13 +30,11 @@ func (c *ContestService) GetContestProblems(
 	// get the problem ids from db
 	dbProblems, err := c.DB.GetContestProblemsByContestID(ctx, contest.ID)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot fetch problems of contest with id %v from db, %w",
-			flux_errors.ErrInternal,
-			contest.ID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot get problems of contest with id %v", contestID),
 		)
-		log.Error(err)
 		return nil, err
 	}
 
@@ -109,7 +107,7 @@ func (c *ContestService) authorizeProblemView(
 		return nil
 	}
 
-	// If LockId is set → this contest is public, require lock access authorization.
+	// If LockId is set -> this contest is public, require lock access authorization.
 	if contest.LockId != nil {
 		// public contest, they need the get authorized with
 		// the access of lock of the contest
@@ -124,22 +122,20 @@ func (c *ContestService) authorizeProblemView(
 			return err
 		}
 
-		err := c.UserServiceConfig.AuthorizeUserRole(
+		if err := c.UserServiceConfig.AuthorizeUserRole(
 			ctx,
 			*contest.LockAccess,
 			"",
-		)
-		if err != nil {
+		); err != nil {
 			return err
 		}
 	} else {
 		// private contest, need creator access
-		err := c.UserServiceConfig.AuthorizeCreatorAccess(
+		if err := c.UserServiceConfig.AuthorizeCreatorAccess(
 			ctx,
 			contest.CreatedBy,
 			"",
-		)
-		if err != nil {
+		); err != nil {
 			return err
 		}
 	}

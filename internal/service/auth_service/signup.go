@@ -18,12 +18,11 @@ import (
 func (a *AuthService) SignUp(
 	ctx context.Context,
 	userRegestration UserRegestration,
-	verificationToken string,
 ) (userResponse UserRegestrationResponse, err error) {
 	// verify the token
 	if err = a.validateVerificationToken(
 		ctx,
-		verificationToken,
+		userRegestration.VerificationToken,
 		userRegestration.UserMail,
 		email.PurposeEmailSignUp,
 	); err != nil {
@@ -31,13 +30,13 @@ func (a *AuthService) SignUp(
 			log.WithFields(log.Fields{
 				"roll_no": userRegestration.RollNo,
 				"purpose": string(email.PurposeEmailSignUp),
-				"token":   verificationToken,
-			}).Error(err)
+				"token":   userRegestration.VerificationToken,
+			}).Warn(err)
 		}
 		return
 	}
 
-	// Validate all inputs together.
+	// Validate
 	if err = service.ValidateInput(userRegestration); err != nil {
 		return
 	}
@@ -57,7 +56,7 @@ func (a *AuthService) SignUp(
 	// invalidate verification token
 	if err = a.invalidateVerificationToken(
 		ctx,
-		verificationToken,
+		userRegestration.VerificationToken,
 		userRegestration.UserMail,
 		email.PurposeEmailSignUp,
 	); err != nil {
@@ -82,22 +81,23 @@ func (a *AuthService) createUserInDB(
 	userRegestration UserRegestration,
 	passwordHash string,
 ) (database.User, error) {
-
 	/*
 		Generate a random userName and try to insert into db.
 		If username already exist, try to create a new one.
-		After a large number of tries, api request will generate timeout via ctx.Done()
-		Given a small set of users, this startegies suffices for our usecase
+		Either after max retries or ctx.Done() return failure
+		Given a small set of users, this startegy suffices for our usecase
 	*/
 	const maxUserNameRetries = 15
 	for i := range maxUserNameRetries {
 		attemptLogger := log.WithField("attempt", i+1)
 		select {
+		// if request timelimit is exceeded, return failure
 		case <-ctx.Done():
 			err := fmt.Errorf("%w, unable to generate username, %w", flux_errors.ErrInternal, ctx.Err())
 			attemptLogger.Error(err)
 			return database.User{}, err
 		default:
+			// generate a random user_name
 			userName, err := genRandUserName(
 				userRegestration.FirstName,
 				userRegestration.LastName,
@@ -105,6 +105,8 @@ func (a *AuthService) createUserInDB(
 			if err != nil {
 				return database.User{}, err
 			}
+
+			// create user in db
 			user, dbErr := a.DB.CreateUser(
 				ctx,
 				database.CreateUserParams{
@@ -117,20 +119,28 @@ func (a *AuthService) createUserInDB(
 				},
 			)
 			if dbErr != nil {
+				// if user_name already exist retry
 				var pgErr *pgconn.PgError
-				if errors.As(dbErr, &pgErr) && pgErr.Code == flux_errors.CodeUniqueConstraintViolation {
-					if strings.Contains(pgErr.ConstraintName, "user_name") {
-						attemptLogger.Errorf("cannot create user. user_name %s already exist", userName)
-						continue
-					}
-					return database.User{}, fmt.Errorf("%s %w", pgErr.Detail, flux_errors.ErrUserAlreadyExists)
+				if errors.As(dbErr, &pgErr) &&
+					pgErr.ConstraintName == "uq_users_user_name" {
+					attemptLogger.Errorf("cannot create user. user_name %s already exist", userName)
+					continue
 				}
-				attemptLogger.Errorf("failed to insert user into database: %v", dbErr)
-				return database.User{}, errors.Join(flux_errors.ErrInternal, dbErr)
+				// other db error
+				dbErr = flux_errors.HandleDBErrors(
+					dbErr,
+					errMsgs,
+					"failed to insert user into db",
+				)
+				return user, dbErr
 			}
+
+			// user created successfully, return created user
 			return user, nil
 		}
 	}
+
+	// failed to create user after max retries
 	err := fmt.Errorf("%w, unable to create user. max retries exceeded", flux_errors.ErrInternal)
 	log.Error(err)
 	return database.User{}, err

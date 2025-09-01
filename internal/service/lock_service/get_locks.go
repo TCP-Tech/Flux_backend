@@ -2,7 +2,6 @@ package lock_service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 
@@ -27,41 +26,31 @@ func (l *LockService) GetLockById(
 	// get lock from db
 	dbLock, err := l.DB.GetLockById(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf(
-				"%w, lock with given id do not exist",
-				flux_errors.ErrNotFound,
-			)
-			return
-		}
-		err = fmt.Errorf(
-			"%w, cannot fetch lock with id %v from db, %w",
-			flux_errors.ErrInternal,
-			id,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot get lock with id %v from db", id),
 		)
 		return
 	}
 
 	// authorize
-	err = l.AuthorizeLock(
+	if err = l.UserServiceConfig.AuthorizeUserRole(
 		ctx,
-		dbLock.Timeout,
-		user_service.UserRole(dbLock.Access),
+		dbLock.Access,
 		fmt.Sprintf(
-			"user %s tried to view lock with id %v",
+			"user %s tried to get lock with id %v",
 			claims.UserName,
-			id,
+			dbLock.ID,
 		),
-	)
-	if err != nil {
+	); err != nil {
 		if errors.Is(err, flux_errors.ErrUnAuthorized) {
-			err = fmt.Errorf(
-				"%w, lock with given id does not exist",
+			return FluxLock{}, fmt.Errorf(
+				"%w, cannot find lock with given id",
 				flux_errors.ErrNotFound,
 			)
 		}
-		return
+		return FluxLock{}, err
 	}
 
 	return dbLockToServiceLock(dbLock), nil
@@ -99,7 +88,7 @@ func (l *LockService) GetLocksByFilters(
 
 	// fetch creator id if user_name or roll_no is provided
 	var createdBy *uuid.UUID
-	if request.CreatorUserName != "" || request.CreatorRollNo != "" {
+	if request.CreatorUserName != nil || request.CreatorRollNo != nil {
 		user, err := l.UserServiceConfig.GetUserByUserNameOrRollNo(
 			ctx,
 			request.CreatorUserName,
@@ -108,7 +97,7 @@ func (l *LockService) GetLocksByFilters(
 		if err != nil {
 			return nil, err
 		}
-		createdBy = &user.ID
+		createdBy = &user.UserID
 	}
 
 	// calculate offset
@@ -137,14 +126,12 @@ func (l *LockService) GetLocksByFilters(
 	// convert the locks to service locks
 	locks := make([]FluxLock, 0, len(dbLocks))
 	for _, dbLock := range dbLocks {
-		err = l.AuthorizeLock(
+		if err = l.UserServiceConfig.AuthorizeUserRole(
 			ctx,
-			dbLock.Timeout,
-			user_service.UserRole(dbLock.Access),
+			dbLock.Access,
 			"",
-		)
-		if err != nil {
-			log.Debug(err)
+		); err != nil {
+			continue
 		}
 		locks = append(locks, dbLockToServiceLock(dbLock))
 	}

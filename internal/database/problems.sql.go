@@ -16,89 +16,118 @@ import (
 const addProblem = `-- name: AddProblem :one
 INSERT INTO problems (
     title,
-    statement,
-    input_format,
-    output_format,
-    example_testcases,
-    notes,
-    memory_limit_kb,
-    time_limit_ms,
-    created_by,
-    last_updated_by,
     difficulty,
-    submission_link,
-    platform,
-    lock_id
-) VALUES (
-    $1, -- title
-    $2, -- statement
-    $3, -- input_format (can be NULL)
-    $4, -- output_format (can be NULL)
-    $5, -- samples (can be NULL)
-    $6, -- notes (can be NULL)
-    $7, -- memory_limit_kb
-    $8, -- time_limit_ms
-    $9, -- created_by (UUID)
-    $9, -- last_updated_by (UUID)
-    $10, -- difficulty (can be NULL)
-    $11, -- submission_link (can be NULL)
-    $12, -- platform (can be NULL)
-    $13 -- lock_id
-)
-RETURNING id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id
+    evaluator,
+    lock_id,
+    created_by,
+    last_updated_by
+) VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, title, difficulty, evaluator, lock_id, created_by, last_updated_by, created_at, updated_at
 `
 
 type AddProblemParams struct {
-	Title            string           `json:"title"`
-	Statement        string           `json:"statement"`
-	InputFormat      string           `json:"input_format"`
-	OutputFormat     string           `json:"output_format"`
-	ExampleTestcases *json.RawMessage `json:"example_testcases"`
-	Notes            *string          `json:"notes"`
-	MemoryLimitKb    int32            `json:"memory_limit_kb"`
-	TimeLimitMs      int32            `json:"time_limit_ms"`
-	CreatedBy        uuid.UUID        `json:"created_by"`
-	Difficulty       int32            `json:"difficulty"`
-	SubmissionLink   *string          `json:"submission_link"`
-	Platform         NullPlatform     `json:"platform"`
-	LockID           *uuid.UUID       `json:"lock_id"`
+	Title         string     `json:"title"`
+	Difficulty    int32      `json:"difficulty"`
+	Evaluator     string     `json:"evaluator"`
+	LockID        *uuid.UUID `json:"lock_id"`
+	CreatedBy     uuid.UUID  `json:"created_by"`
+	LastUpdatedBy uuid.UUID  `json:"last_updated_by"`
 }
 
 func (q *Queries) AddProblem(ctx context.Context, arg AddProblemParams) (Problem, error) {
 	row := q.db.QueryRow(ctx, addProblem,
 		arg.Title,
-		arg.Statement,
-		arg.InputFormat,
-		arg.OutputFormat,
-		arg.ExampleTestcases,
-		arg.Notes,
-		arg.MemoryLimitKb,
-		arg.TimeLimitMs,
-		arg.CreatedBy,
 		arg.Difficulty,
-		arg.SubmissionLink,
-		arg.Platform,
+		arg.Evaluator,
 		arg.LockID,
+		arg.CreatedBy,
+		arg.LastUpdatedBy,
 	)
 	var i Problem
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Statement,
-		&i.InputFormat,
-		&i.OutputFormat,
-		&i.ExampleTestcases,
-		&i.Notes,
-		&i.MemoryLimitKb,
-		&i.TimeLimitMs,
+		&i.Difficulty,
+		&i.Evaluator,
+		&i.LockID,
 		&i.CreatedBy,
 		&i.LastUpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Difficulty,
+	)
+	return i, err
+}
+
+const addStandardProblemData = `-- name: AddStandardProblemData :one
+INSERT INTO standard_problem_data (
+    problem_id,
+    statement,
+    input_format,
+    output_format,
+    function_definitons,
+    example_testcases,
+    notes,
+    memory_limit_kb,
+    time_limit_ms,
+    submission_link,
+    last_updated_by
+) VALUES (
+    $1,  -- problem_id
+    $2,  -- statement
+    $3,  -- input_format
+    $4,  -- output_format
+    $5,  -- function_definiton
+    $6,  -- example_testcases
+    $7,  -- notes
+    $8,  -- memory_limit_kb
+    $9,  -- time_limit_ms
+    $10,  -- submission_link
+    $11  -- last_)updated_by
+)
+RETURNING problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, submission_link, last_updated_by
+`
+
+type AddStandardProblemDataParams struct {
+	ProblemID          int32            `json:"problem_id"`
+	Statement          string           `json:"statement"`
+	InputFormat        string           `json:"input_format"`
+	OutputFormat       string           `json:"output_format"`
+	FunctionDefinitons *json.RawMessage `json:"function_definitons"`
+	ExampleTestcases   *json.RawMessage `json:"example_testcases"`
+	Notes              *string          `json:"notes"`
+	MemoryLimitKb      int32            `json:"memory_limit_kb"`
+	TimeLimitMs        int32            `json:"time_limit_ms"`
+	SubmissionLink     *string          `json:"submission_link"`
+	LastUpdatedBy      uuid.UUID        `json:"last_updated_by"`
+}
+
+func (q *Queries) AddStandardProblemData(ctx context.Context, arg AddStandardProblemDataParams) (StandardProblemDatum, error) {
+	row := q.db.QueryRow(ctx, addStandardProblemData,
+		arg.ProblemID,
+		arg.Statement,
+		arg.InputFormat,
+		arg.OutputFormat,
+		arg.FunctionDefinitons,
+		arg.ExampleTestcases,
+		arg.Notes,
+		arg.MemoryLimitKb,
+		arg.TimeLimitMs,
+		arg.SubmissionLink,
+		arg.LastUpdatedBy,
+	)
+	var i StandardProblemDatum
+	err := row.Scan(
+		&i.ProblemID,
+		&i.Statement,
+		&i.InputFormat,
+		&i.OutputFormat,
+		&i.FunctionDefinitons,
+		&i.ExampleTestcases,
+		&i.Notes,
+		&i.MemoryLimitKb,
+		&i.TimeLimitMs,
 		&i.SubmissionLink,
-		&i.Platform,
-		&i.LockID,
+		&i.LastUpdatedBy,
 	)
 	return i, err
 }
@@ -107,94 +136,56 @@ const checkPlatformType = `-- name: CheckPlatformType :one
 SELECT $1::Platform
 `
 
-func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 Platform) (Platform, error) {
+func (q *Queries) CheckPlatformType(ctx context.Context, dollar_1 interface{}) (interface{}, error) {
 	row := q.db.QueryRow(ctx, checkPlatformType, dollar_1)
-	var column_1 Platform
+	var column_1 interface{}
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
-const getProblemAuth = `-- name: GetProblemAuth :one
-SELECT locks.id, locks.access, locks.timeout
-FROM problems
-LEFT JOIN locks ON problems.lock_id = locks.id
-WHERE problems.id = $1
-`
+const getProblemByID = `-- name: GetProblemByID :one
+SELECT 
+    p.id,
+    p.title,
+    p.difficulty,
+    p.evaluator,
+    p.lock_id,
+    p.created_by,
 
-type GetProblemAuthRow struct {
-	ID      *uuid.UUID `json:"id"`
-	Access  *string    `json:"access"`
-	Timeout *time.Time `json:"timeout"`
-}
-
-func (q *Queries) GetProblemAuth(ctx context.Context, id int32) (GetProblemAuthRow, error) {
-	row := q.db.QueryRow(ctx, getProblemAuth, id)
-	var i GetProblemAuthRow
-	err := row.Scan(&i.ID, &i.Access, &i.Timeout)
-	return i, err
-}
-
-const getProblemById = `-- name: GetProblemById :one
-SELECT
-    -- Explicitly list all columns from 'problems' except 'lock_id'
-    problems.id, problems.title, problems.statement, problems.input_format, problems.output_format, problems.example_testcases, problems.notes, problems.memory_limit_kb, problems.time_limit_ms, problems.created_by, problems.last_updated_by, problems.created_at, problems.updated_at, problems.difficulty, problems.submission_link, problems.platform, problems.lock_id,
-
-    -- Select only the 'access' column from the 'locks' table
-    locks.access as lock_access,
-    locks.timeout as lock_timeout
+    l.access,
+    l.timeout
 FROM
-    problems
+    problems p
 LEFT JOIN
-    locks ON problems.lock_id = locks.id
-WHERE
-    problems.id = $1
+    locks l
+ON
+    p.lock_id = l.id
+WHERE p.id=$1
 `
 
-type GetProblemByIdRow struct {
-	ID               int32            `json:"id"`
-	Title            string           `json:"title"`
-	Statement        string           `json:"statement"`
-	InputFormat      string           `json:"input_format"`
-	OutputFormat     string           `json:"output_format"`
-	ExampleTestcases *json.RawMessage `json:"example_testcases"`
-	Notes            *string          `json:"notes"`
-	MemoryLimitKb    int32            `json:"memory_limit_kb"`
-	TimeLimitMs      int32            `json:"time_limit_ms"`
-	CreatedBy        uuid.UUID        `json:"created_by"`
-	LastUpdatedBy    uuid.UUID        `json:"last_updated_by"`
-	CreatedAt        time.Time        `json:"created_at"`
-	UpdatedAt        time.Time        `json:"updated_at"`
-	Difficulty       int32            `json:"difficulty"`
-	SubmissionLink   *string          `json:"submission_link"`
-	Platform         NullPlatform     `json:"platform"`
-	LockID           *uuid.UUID       `json:"lock_id"`
-	LockAccess       *string          `json:"lock_access"`
-	LockTimeout      *time.Time       `json:"lock_timeout"`
+type GetProblemByIDRow struct {
+	ID         int32      `json:"id"`
+	Title      string     `json:"title"`
+	Difficulty int32      `json:"difficulty"`
+	Evaluator  string     `json:"evaluator"`
+	LockID     *uuid.UUID `json:"lock_id"`
+	CreatedBy  uuid.UUID  `json:"created_by"`
+	Access     *string    `json:"access"`
+	Timeout    *time.Time `json:"timeout"`
 }
 
-func (q *Queries) GetProblemById(ctx context.Context, id int32) (GetProblemByIdRow, error) {
-	row := q.db.QueryRow(ctx, getProblemById, id)
-	var i GetProblemByIdRow
+func (q *Queries) GetProblemByID(ctx context.Context, id int32) (GetProblemByIDRow, error) {
+	row := q.db.QueryRow(ctx, getProblemByID, id)
+	var i GetProblemByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Statement,
-		&i.InputFormat,
-		&i.OutputFormat,
-		&i.ExampleTestcases,
-		&i.Notes,
-		&i.MemoryLimitKb,
-		&i.TimeLimitMs,
-		&i.CreatedBy,
-		&i.LastUpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
 		&i.Difficulty,
-		&i.SubmissionLink,
-		&i.Platform,
+		&i.Evaluator,
 		&i.LockID,
-		&i.LockAccess,
-		&i.LockTimeout,
+		&i.CreatedBy,
+		&i.Access,
+		&i.Timeout,
 	)
 	return i, err
 }
@@ -204,20 +195,22 @@ SELECT
     p.id,
     p.title,
     p.difficulty,
-    p.platform,
-    p.created_by,   
-    p.created_at,
-    l.id as lock_id,
-    l.timeout as lock_timeout,
-    l.access as lock_access
+    p.evaluator,
+    p.created_by,
+    p.lock_id,
+
+    l.timeout,
+    l.access
 FROM
     problems AS p
+JOIN 
+    standard_problem_data AS pd
+ON
+    p.id = pd.problem_id
 LEFT JOIN
     locks AS l ON p.lock_id = l.id
 WHERE
     -- Optional filter by a list of problem IDs
-    -- This checks if the input slice is empty. If it is, the condition is true.
-    -- If not empty, it checks if the problem ID is in the slice.
     (
         ($1::int[]) IS NULL OR
         cardinality($1::int[]) = 0 OR
@@ -236,35 +229,44 @@ AND
         p.created_by = $3::uuid
     )
 AND
-    -- Title search with wildcards handled in SQL
-    p.title ILIKE '%' || $4::text || '%'
+    -- Optional filter by evaluator
+    (
+        $4::text IS NULL OR
+        p.evaluator = $4::text
+    )
+AND
+    (
+        -- Title search with wildcards handled in SQL
+        $5::text IS NULL OR
+        p.title ILIKE '%' || $5::text || '%'    
+    )
 ORDER BY
     p.created_at DESC
 LIMIT
-    $6
+    $7
 OFFSET
-    $5
+    $6
 `
 
 type GetProblemsByFiltersParams struct {
 	ProblemIds  []int32    `json:"problem_ids"`
 	LockID      *uuid.UUID `json:"lock_id"`
 	CreatedBy   *uuid.UUID `json:"created_by"`
-	TitleSearch string     `json:"title_search"`
+	Evaluator   *string    `json:"evaluator"`
+	TitleSearch *string    `json:"title_search"`
 	Offset      int32      `json:"offset"`
 	Limit       int32      `json:"limit"`
 }
 
 type GetProblemsByFiltersRow struct {
-	ID          int32        `json:"id"`
-	Title       string       `json:"title"`
-	Difficulty  int32        `json:"difficulty"`
-	Platform    NullPlatform `json:"platform"`
-	CreatedBy   uuid.UUID    `json:"created_by"`
-	CreatedAt   time.Time    `json:"created_at"`
-	LockID      *uuid.UUID   `json:"lock_id"`
-	LockTimeout *time.Time   `json:"lock_timeout"`
-	LockAccess  *string      `json:"lock_access"`
+	ID         int32      `json:"id"`
+	Title      string     `json:"title"`
+	Difficulty int32      `json:"difficulty"`
+	Evaluator  string     `json:"evaluator"`
+	CreatedBy  uuid.UUID  `json:"created_by"`
+	LockID     *uuid.UUID `json:"lock_id"`
+	Timeout    *time.Time `json:"timeout"`
+	Access     *string    `json:"access"`
 }
 
 func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFiltersParams) ([]GetProblemsByFiltersRow, error) {
@@ -272,6 +274,7 @@ func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFil
 		arg.ProblemIds,
 		arg.LockID,
 		arg.CreatedBy,
+		arg.Evaluator,
 		arg.TitleSearch,
 		arg.Offset,
 		arg.Limit,
@@ -287,12 +290,11 @@ func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFil
 			&i.ID,
 			&i.Title,
 			&i.Difficulty,
-			&i.Platform,
+			&i.Evaluator,
 			&i.CreatedBy,
-			&i.CreatedAt,
 			&i.LockID,
-			&i.LockTimeout,
-			&i.LockAccess,
+			&i.Timeout,
+			&i.Access,
 		); err != nil {
 			return nil, err
 		}
@@ -304,80 +306,133 @@ func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFil
 	return items, nil
 }
 
+const getStandardProblemData = `-- name: GetStandardProblemData :one
+SELECT problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, submission_link, last_updated_by FROM standard_problem_data WHERE problem_id=$1
+`
+
+func (q *Queries) GetStandardProblemData(ctx context.Context, problemID int32) (StandardProblemDatum, error) {
+	row := q.db.QueryRow(ctx, getStandardProblemData, problemID)
+	var i StandardProblemDatum
+	err := row.Scan(
+		&i.ProblemID,
+		&i.Statement,
+		&i.InputFormat,
+		&i.OutputFormat,
+		&i.FunctionDefinitons,
+		&i.ExampleTestcases,
+		&i.Notes,
+		&i.MemoryLimitKb,
+		&i.TimeLimitMs,
+		&i.SubmissionLink,
+		&i.LastUpdatedBy,
+	)
+	return i, err
+}
+
 const updateProblem = `-- name: UpdateProblem :one
-UPDATE problems
-SET
-    title = $1,
-    statement = $2,
-    input_format = $3,
-    output_format = $4,
-    example_testcases = $5,
-    notes = $6,
-    memory_limit_kb = $7,
-    time_limit_ms = $8,
-    difficulty = $9,
-    submission_link = $10,
-    platform = $11,
-    last_updated_by = $12,
-    lock_id = $13
-WHERE
-    id = $14
-RETURNING id, title, statement, input_format, output_format, example_testcases, notes, memory_limit_kb, time_limit_ms, created_by, last_updated_by, created_at, updated_at, difficulty, submission_link, platform, lock_id
+UPDATE problems SET
+    title=$2,
+    difficulty=$3,
+    evaluator=$4,
+    lock_id=$5,
+    last_updated_by=$6
+WHERE 
+    id=$1
+RETURNING id, title, difficulty, evaluator, lock_id, created_by, last_updated_by, created_at, updated_at
 `
 
 type UpdateProblemParams struct {
-	Title            string           `json:"title"`
-	Statement        string           `json:"statement"`
-	InputFormat      string           `json:"input_format"`
-	OutputFormat     string           `json:"output_format"`
-	ExampleTestcases *json.RawMessage `json:"example_testcases"`
-	Notes            *string          `json:"notes"`
-	MemoryLimitKb    int32            `json:"memory_limit_kb"`
-	TimeLimitMs      int32            `json:"time_limit_ms"`
-	Difficulty       int32            `json:"difficulty"`
-	SubmissionLink   *string          `json:"submission_link"`
-	Platform         NullPlatform     `json:"platform"`
-	LastUpdatedBy    uuid.UUID        `json:"last_updated_by"`
-	LockID           *uuid.UUID       `json:"lock_id"`
-	ID               int32            `json:"id"`
+	ID            int32      `json:"id"`
+	Title         string     `json:"title"`
+	Difficulty    int32      `json:"difficulty"`
+	Evaluator     string     `json:"evaluator"`
+	LockID        *uuid.UUID `json:"lock_id"`
+	LastUpdatedBy uuid.UUID  `json:"last_updated_by"`
 }
 
 func (q *Queries) UpdateProblem(ctx context.Context, arg UpdateProblemParams) (Problem, error) {
 	row := q.db.QueryRow(ctx, updateProblem,
-		arg.Title,
-		arg.Statement,
-		arg.InputFormat,
-		arg.OutputFormat,
-		arg.ExampleTestcases,
-		arg.Notes,
-		arg.MemoryLimitKb,
-		arg.TimeLimitMs,
-		arg.Difficulty,
-		arg.SubmissionLink,
-		arg.Platform,
-		arg.LastUpdatedBy,
-		arg.LockID,
 		arg.ID,
+		arg.Title,
+		arg.Difficulty,
+		arg.Evaluator,
+		arg.LockID,
+		arg.LastUpdatedBy,
 	)
 	var i Problem
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Statement,
-		&i.InputFormat,
-		&i.OutputFormat,
-		&i.ExampleTestcases,
-		&i.Notes,
-		&i.MemoryLimitKb,
-		&i.TimeLimitMs,
+		&i.Difficulty,
+		&i.Evaluator,
+		&i.LockID,
 		&i.CreatedBy,
 		&i.LastUpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Difficulty,
+	)
+	return i, err
+}
+
+const updateStandardProblemData = `-- name: UpdateStandardProblemData :one
+UPDATE standard_problem_data
+SET
+    statement = $2,
+    input_format = $3,
+    output_format = $4,
+    function_definitons = $5,
+    example_testcases = $6,
+    notes = $7,
+    memory_limit_kb = $8,
+    time_limit_ms = $9,
+    submission_link = $10,
+    last_updated_by = $11
+WHERE
+    problem_id = $1
+RETURNING problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, submission_link, last_updated_by
+`
+
+type UpdateStandardProblemDataParams struct {
+	ProblemID          int32            `json:"problem_id"`
+	Statement          string           `json:"statement"`
+	InputFormat        string           `json:"input_format"`
+	OutputFormat       string           `json:"output_format"`
+	FunctionDefinitons *json.RawMessage `json:"function_definitons"`
+	ExampleTestcases   *json.RawMessage `json:"example_testcases"`
+	Notes              *string          `json:"notes"`
+	MemoryLimitKb      int32            `json:"memory_limit_kb"`
+	TimeLimitMs        int32            `json:"time_limit_ms"`
+	SubmissionLink     *string          `json:"submission_link"`
+	LastUpdatedBy      uuid.UUID        `json:"last_updated_by"`
+}
+
+func (q *Queries) UpdateStandardProblemData(ctx context.Context, arg UpdateStandardProblemDataParams) (StandardProblemDatum, error) {
+	row := q.db.QueryRow(ctx, updateStandardProblemData,
+		arg.ProblemID,
+		arg.Statement,
+		arg.InputFormat,
+		arg.OutputFormat,
+		arg.FunctionDefinitons,
+		arg.ExampleTestcases,
+		arg.Notes,
+		arg.MemoryLimitKb,
+		arg.TimeLimitMs,
+		arg.SubmissionLink,
+		arg.LastUpdatedBy,
+	)
+	var i StandardProblemDatum
+	err := row.Scan(
+		&i.ProblemID,
+		&i.Statement,
+		&i.InputFormat,
+		&i.OutputFormat,
+		&i.FunctionDefinitons,
+		&i.ExampleTestcases,
+		&i.Notes,
+		&i.MemoryLimitKb,
+		&i.TimeLimitMs,
 		&i.SubmissionLink,
-		&i.Platform,
-		&i.LockID,
+		&i.LastUpdatedBy,
 	)
 	return i, err
 }

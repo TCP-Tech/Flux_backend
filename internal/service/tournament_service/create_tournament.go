@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
@@ -43,12 +42,11 @@ func (t *TournamentService) CreateTournament(
 		IsPublished: tournament.IsPublished,
 	})
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot create tournament, %w",
-			flux_errors.ErrInternal,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			"cannot create torunament",
 		)
-		log.Error(err)
 		return Tournament{}, err
 	}
 

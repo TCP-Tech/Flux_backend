@@ -2,8 +2,6 @@ package tournament_service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -20,20 +18,11 @@ func (t *TournamentService) GetTournamentByID(
 	// fetch tournament from db
 	dbTournament, err := t.DB.GetTournamentById(ctx, tournamentID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Tournament{}, fmt.Errorf(
-				"%w, tournament with ID %v does not exist",
-				flux_errors.ErrNotFound,
-				tournamentID,
-			)
-		}
-		err = fmt.Errorf(
-			"%w, cannot get tournament by ID %v, %w",
-			flux_errors.ErrInternal,
-			tournamentID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot get torunament with id %v from db", tournamentID),
 		)
-		log.Error(err)
 		return Tournament{}, err
 	}
 
@@ -68,6 +57,15 @@ func (t *TournamentService) GetTournamentByFitlers(
 			Offset:      offset,
 		},
 	)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot fetch tournament by filters, %w",
+			flux_errors.ErrInternal,
+			err,
+		)
+		log.WithField("request", request).Error(err)
+		return nil, err
+	}
 
 	res := make([]Tournament, 0, len(dbTournaments))
 	for _, dbTournament := range dbTournaments {

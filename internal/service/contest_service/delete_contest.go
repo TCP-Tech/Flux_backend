@@ -49,39 +49,32 @@ func (c *ContestService) DeleteContest(
 	// unregister users
 	err = qtx.UnRegisterContestUsers(ctx, id)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot unregister users of contest %v, %w",
-			flux_errors.ErrInternal,
-			id,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot un-register users of contest with id %v", id),
 		)
-		log.Error(err)
 		return err
 	}
 
 	// delete contest problems
 	err = qtx.DeleteProblemsByContestId(ctx, id)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot delete problems of contest %v, %w",
-			flux_errors.ErrInternal,
-			id,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot delete problems of contest with id %v", id),
 		)
-		log.Error(err)
-		return err
 	}
 
 	// delete contest
 	err = qtx.DeleteContestByID(ctx, id)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot delete contest %v, %w",
-			flux_errors.ErrInternal,
-			id,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot delete contest with id %v", id),
 		)
-		log.Error(err)
 		return err
 	}
 

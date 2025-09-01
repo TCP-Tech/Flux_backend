@@ -25,8 +25,18 @@ func (a *Api) HandlerSignUpSendMail(w http.ResponseWriter, r *http.Request) {
 func (a *Api) HandlerResetPasswordSendMail(w http.ResponseWriter, r *http.Request) {
 	// get the username from query
 	queryParams := r.URL.Query()
-	userName := queryParams.Get("user_name")
-	rollNo := queryParams.Get("roll_no")
+	userNameStr := queryParams.Get("user_name")
+	rollNoStr := queryParams.Get("roll_no")
+
+	var userName *string
+	if userNameStr != "" {
+		userName = &userNameStr
+	}
+
+	var rollNo *string
+	if rollNoStr != "" {
+		rollNo = &rollNoStr
+	}
 
 	// send mail to reset password
 	err := a.AuthServiceConfig.ResetPasswordSendMail(

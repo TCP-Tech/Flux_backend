@@ -9,43 +9,85 @@ import (
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
-	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
 )
 
+func (u *UserService) GetUserByUserNameOrRollNo(
+	ctx context.Context,
+	userName *string,
+	rollNo *string,
+) (UserMetaData, error) {
+	if userName != nil {
+		return u.FetchUserByUserName(ctx, *userName)
+	} else if rollNo != nil {
+		return u.FetchUserByRollNo(ctx, *rollNo)
+	}
+
+	return UserMetaData{}, fmt.Errorf(
+		"%w, either user_name or roll_no must be provided",
+		flux_errors.ErrInvalidRequest,
+	)
+}
+
 func (u *UserService) FetchUserByUserName(
 	ctx context.Context,
 	userName string,
-) (user database.User, err error) {
-	user, dbErr := u.DB.GetUserByUserName(ctx, userName)
-	if dbErr != nil {
-		if errors.Is(dbErr, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, no user exist with that username", flux_errors.ErrInvalidUserCredentials)
-			return
+) (UserMetaData, error) {
+	dbUser, err := u.DB.GetUserByUserName(ctx, userName)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err := fmt.Errorf(
+				"%w, no user exist with that username",
+				flux_errors.ErrNotFound,
+			)
+			return UserMetaData{}, err
 		}
-		log.Errorf("failed to get user by username. %v", dbErr)
-		err = errors.Join(flux_errors.ErrInternal, dbErr)
-		return
+		err = fmt.Errorf(
+			"%w, cannot fetch user with name %s from db, %w",
+			flux_errors.ErrInternal,
+			userName,
+			err,
+		)
+		log.Error(err)
+		return UserMetaData{}, err
 	}
-	return
+
+	return UserMetaData{
+		UserID:   dbUser.ID,
+		UserName: dbUser.UserName,
+		RollNo:   dbUser.RollNo,
+	}, nil
 }
 
 func (u *UserService) FetchUserByRollNo(
 	ctx context.Context,
 	rollNo string,
-) (user database.User, err error) {
-	user, dbErr := u.DB.GetUserByRollNumber(ctx, rollNo)
-	if dbErr != nil {
-		if errors.Is(dbErr, sql.ErrNoRows) {
-			err = fmt.Errorf("%w, no user exist with that roll_no", flux_errors.ErrInvalidUserCredentials)
-			return
+) (UserMetaData, error) {
+	dbUser, err := u.DB.GetUserByRollNumber(ctx, rollNo)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err := fmt.Errorf(
+				"%w, no user exist with that roll_no",
+				flux_errors.ErrNotFound,
+			)
+			return UserMetaData{}, err
 		}
-		log.Errorf("failed to get user by roll number. %v", dbErr)
-		err = errors.Join(dbErr, flux_errors.ErrInternal)
-		return
+		err = fmt.Errorf(
+			"%w, cannot fetch user with roll_no %s from db, %w",
+			flux_errors.ErrInternal,
+			rollNo,
+			err,
+		)
+		log.Error(err)
+		return UserMetaData{}, err
 	}
-	return
+
+	return UserMetaData{
+		UserID:   dbUser.ID,
+		UserName: dbUser.UserName,
+		RollNo:   dbUser.RollNo,
+	}, nil
 }
 
 // extract user roles
@@ -79,7 +121,7 @@ func (u *UserService) FetchUserRoles(ctx context.Context, userId uuid.UUID) ([]s
 
 func (u *UserService) AuthorizeUserRole(
 	ctx context.Context,
-	role UserRole,
+	role string,
 	warnMessage string,
 ) (err error) {
 	// get claims
@@ -134,51 +176,22 @@ func (u *UserService) AuthorizeCreatorAccess(
 	return nil
 }
 
-// only 3 functions
-// a little duplication is better than a little abstraction
-func (u *UserService) IsUserIDValid(
-	ctx context.Context,
-	userID uuid.UUID,
-) (bool, error) {
-	exist, err := u.DB.IsUserIDValid(
-		ctx, userID,
-	)
-	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot check if user exist with id %v",
-			flux_errors.ErrInternal,
-			userID,
-		)
-		log.Error(err)
-		return false, err
-	}
+// func (u *UserService) IsUserIDValid(
+// 	ctx context.Context,
+// 	userID uuid.UUID,
+// ) (bool, error) {
+// 	exist, err := u.DB.IsUserIDValid(
+// 		ctx, userID,
+// 	)
+// 	if err != nil {
+// 		err = fmt.Errorf(
+// 			"%w, cannot check if user exist with id %v",
+// 			flux_errors.ErrInternal,
+// 			userID,
+// 		)
+// 		log.Error(err)
+// 		return false, err
+// 	}
 
-	return exist, nil
-}
-
-func (u *UserService) GetUserIDByUserName(
-	ctx context.Context,
-	userName string,
-) (uuid.UUID, error) {
-	userID, err := u.DB.GetUserIDByUserName(ctx, userName)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf(
-				"%w, user %s does not exist",
-				flux_errors.ErrInvalidRequest,
-				userName,
-			)
-			return uuid.Nil, err
-		}
-		err = fmt.Errorf(
-			"%w, cannot fetch userId of user %s, %w",
-			flux_errors.ErrInternal,
-			userName,
-			err,
-		)
-		log.Error(err)
-		return uuid.Nil, err
-	}
-
-	return userID, nil
-}
+// 	return exist, nil
+// }

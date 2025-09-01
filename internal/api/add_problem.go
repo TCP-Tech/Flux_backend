@@ -6,36 +6,52 @@ import (
 	"net/http"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
 )
 
-func (a *Api) HandlerAddProblem(w http.ResponseWriter, r *http.Request) {
-	// get the problem body
-	var problem problem_service.Problem
-	err := decodeJsonBody(r.Body, &problem)
+func (a *Api) HandlerAddStandardProblem(w http.ResponseWriter, r *http.Request) {
+	type Params struct {
+		Problem             problem_service.Problem             `json:"problem"`
+		StandardProblemData problem_service.StandardProblemData `json:"problem_data"`
+	}
+
+	// decode from body
+	var params Params
+	err := decodeJsonBody(r.Body, &params)
 	if err != nil {
-		msg := fmt.Sprintf("invalid request payload, %s", err.Error())
-		http.Error(w, msg, http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	serviceProblem, err := a.ProblemServiceConfig.AddProblem(r.Context(), problem)
+	// create the problem
+	problemResponse, spdResponse, err := a.ProblemServiceConfig.AddStandardProblem(
+		r.Context(),
+		params.Problem,
+		params.StandardProblemData,
+	)
 	if err != nil {
 		handlerError(err, w)
 		return
 	}
 
 	// marshal
-	response_bytes, err := json.Marshal(serviceProblem)
+	response := Params{
+		Problem:             problemResponse,
+		StandardProblemData: spdResponse,
+	}
+	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		log.Errorf("cannot marshal %v, %v", serviceProblem, err)
-		http.Error(
-			w,
-			"problem added successfully, but there was an error preparing response",
-			http.StatusInternalServerError,
+		err = fmt.Errorf(
+			"%w, cannot marshal %v, %w",
+			flux_errors.ErrInternal,
+			response,
+			err,
 		)
+		log.Error(err)
+		http.Error(w, "problem created, but error in preparing response", http.StatusInternalServerError)
 		return
 	}
 
-	respondWithJson(w, http.StatusOK, response_bytes)
+	respondWithJson(w, http.StatusCreated, responseBytes)
 }

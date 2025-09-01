@@ -10,7 +10,7 @@ import (
 	"github.com/tcp_snm/flux/internal/service/problem_service"
 )
 
-func (a *Api) HandlerGetProblemById(w http.ResponseWriter, r *http.Request) {
+func (a *Api) HandlerGetStandardProblemById(w http.ResponseWriter, r *http.Request) {
 	// get problem id
 	problemIdStr := r.URL.Query().Get("problem_id")
 
@@ -22,14 +22,22 @@ func (a *Api) HandlerGetProblemById(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// fetch the problem using service
-	problem, err := a.ProblemServiceConfig.GetProblemById(r.Context(), int32(problemId))
+	problem, spd, err := a.ProblemServiceConfig.GetStandardProblemByID(
+		r.Context(),
+		int32(problemId),
+	)
 	if err != nil {
 		handlerError(err, w)
 		return
 	}
 
+	response := struct {
+		Problem             problem_service.Problem             `json:"problem"`
+		StandardProblemData problem_service.StandardProblemData `json:"problem_data"`
+	}{problem, spd}
+
 	// marshal the response
-	responseBytes, err := json.Marshal(problem)
+	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		log.Errorf("unable to marshal %v, %v", responseBytes, err)
 		http.Error(w, flux_errors.ErrInternal.Error(), http.StatusInternalServerError)

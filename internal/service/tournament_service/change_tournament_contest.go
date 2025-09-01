@@ -2,8 +2,6 @@ package tournament_service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -49,20 +47,11 @@ func (t *TournamentService) ChangeTournamentContests(
 	// fetch the latest round
 	latestRound, err := t.DB.GetTournamentLatestRound(ctx, request.TournamentID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf(
-				"%w, tournament with ID %v has no rounds",
-				flux_errors.ErrNotFound,
-				request.TournamentID,
-			)
-		}
-		err = fmt.Errorf(
-			"%w, cannot get latest round for tournament %v, %w",
-			flux_errors.ErrInternal,
-			request.TournamentID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot get latest round of tournament with id %v", request.TournamentID),
 		)
-		log.Error(err)
 		return nil, err
 	}
 	// check if they are adding contest in latest round
@@ -108,13 +97,11 @@ func (t *TournamentService) ChangeTournamentContests(
 	// delete previous contests
 	err = qtx.DeleteTournamentContests(ctx, latestRound.ID)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, cannot delete previous contests for tournament round with id %v, %w",
-			flux_errors.ErrInternal,
-			latestRound.ID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot delete contest of tournament round with id %v", latestRound.ID),
 		)
-		log.Error(err)
 		return nil, err
 	}
 
@@ -128,14 +115,15 @@ func (t *TournamentService) ChangeTournamentContests(
 			},
 		)
 		if err != nil {
-			err = fmt.Errorf(
-				"%w, cannot add contest with id %v to tournament round with id %v, %w",
-				flux_errors.ErrInternal,
-				contest.ID,
-				latestRound.ID,
+			err = flux_errors.HandleDBErrors(
 				err,
+				errMsgs,
+				fmt.Sprintf(
+					"cannot add contest %v to torunament round %v",
+					contest.ID,
+					latestRound.ID,
+				),
 			)
-			log.Error(err)
 			return nil, err
 		}
 	}

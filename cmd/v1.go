@@ -10,6 +10,7 @@ func NewV1Router() *chi.Mux {
 
 	// configure all endpoints
 	v1.Get("/healthz", middleware.JWTMiddleware(apiConfig.HandlerReadiness))
+	v1.Get("/me", middleware.JWTMiddleware(apiConfig.HandlerGetMe))
 
 	// auth layer
 	v1.Get("/auth/signup", apiConfig.HandlerSignUpSendMail)
@@ -31,10 +32,10 @@ func NewV1Router() *chi.Mux {
 
 	// problems layer
 	// search
-	v1.Get("/problems", middleware.JWTMiddleware(apiConfig.HandlerGetProblemById))
+	v1.Get("/problems/standard", middleware.JWTMiddleware(apiConfig.HandlerGetStandardProblemById))
 	v1.Post("/problems/search", middleware.JWTMiddleware(apiConfig.HandlerGetProblemsByFilters))
 	// add
-	v1.Post("/problems", middleware.JWTMiddleware(apiConfig.HandlerAddProblem))
+	v1.Post("/problems/standard", middleware.JWTMiddleware(apiConfig.HandlerAddStandardProblem))
 	// update
 	v1.Put("/problems", middleware.JWTMiddleware(apiConfig.HandlerUpdateProblem))
 

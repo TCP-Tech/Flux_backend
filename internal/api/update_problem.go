@@ -33,7 +33,7 @@ func (a *Api) HandlerUpdateProblem(w http.ResponseWriter, r *http.Request) {
 		http.Error(
 			w,
 			"problem updated successfully, but there was an error preparing response",
-			http.StatusOK,
+			http.StatusInternalServerError,
 		)
 		return
 	}

@@ -21,6 +21,7 @@ func (c *ContestService) CreateContest(
 
 	// contest details validations
 	if request.ContestDetails.LockId == nil {
+		// its a private contest
 		err := c.validatePrivateContest(request.ContestDetails)
 		if err != nil {
 			return Contest{}, err
@@ -28,6 +29,7 @@ func (c *ContestService) CreateContest(
 		// validation ensure startTime isnt nil
 		startTime = request.ContestDetails.StartTime
 	} else {
+		// its a public contest
 		// get lock here to get start time from its expiry
 		lock, err := c.LockServiceConfig.GetLockById(
 			ctx,
@@ -38,7 +40,7 @@ func (c *ContestService) CreateContest(
 		}
 
 		// validate the public contest
-		err = c.validatePublicContest(request, lock)
+		err = c.validatePublicContest(request.ContestDetails, request.RegisteredUsers, lock)
 		if err != nil {
 			return Contest{}, err
 		}
@@ -79,8 +81,10 @@ func (c *ContestService) CreateContest(
 	dbContest, err := qtx.CreateContest(
 		ctx,
 		database.CreateContestParams{
-			Title:       request.ContestDetails.Title,
-			CreatedBy:   claims.UserId,
+			Title:     request.ContestDetails.Title,
+			CreatedBy: claims.UserId,
+			// for public contest start_time must be nil as its inferred
+			// from its lock only to avoid inconsistency that arise with duplication
 			StartTime:   request.ContestDetails.StartTime,
 			EndTime:     request.ContestDetails.EndTime,
 			IsPublished: request.ContestDetails.IsPublished,

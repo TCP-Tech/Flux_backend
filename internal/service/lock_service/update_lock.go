@@ -56,13 +56,12 @@ func (l *LockService) UpdateLock(
 		},
 	)
 	if err != nil {
-		err = fmt.Errorf(
-			"%w, unable to update lock with id %v, %w",
-			flux_errors.ErrInternal,
-			lock.ID,
+		err = flux_errors.HandleDBErrors(
 			err,
+			errMsgs,
+			fmt.Sprintf("cannot update lock with id %v", lock.ID),
 		)
-		return
+		return FluxLock{}, err
 	}
 
 	return dbLockToServiceLock(dbLock), nil

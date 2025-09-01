@@ -11,24 +11,33 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 	"golang.org/x/crypto/bcrypt"
 )
 
 func (a *AuthService) Login(
 	ctx context.Context,
-	userName string,
-	rollNo string,
-	password string,
-	rememberForMonth bool,
-) (userLoginResponse UserLoginResponse, tokenString string, tokenExpiry time.Time, err error) {
+	request UserLoginRequest,
+) (userResponse user_service.User, tokenString string, tokenExpiry time.Time, err error) {
 	// get user from db
-	user, err := a.UserConfig.GetUserByUserNameOrRollNo(ctx, userName, rollNo)
+	userMetadata, err := a.UserConfig.GetUserByUserNameOrRollNo(
+		ctx,
+		request.UserName,
+		request.RollNo,
+	)
+	if err != nil {
+		return
+	}
+	user, err := a.UserConfig.GetUserProfile(ctx, userMetadata.UserID)
 	if err != nil {
 		return
 	}
 
 	// validate the password
-	bcErr := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	bcErr := bcrypt.CompareHashAndPassword(
+		[]byte(user.PasswordHash),
+		[]byte(request.Password),
+	)
 	if bcErr != nil {
 		if errors.Is(bcErr, bcrypt.ErrMismatchedHashAndPassword) {
 			err = flux_errors.ErrInvalidUserCredentials
@@ -39,15 +48,9 @@ func (a *AuthService) Login(
 		return
 	}
 
-	// fetch user roles to store in claims
-	roles, err := a.UserConfig.FetchUserRoles(ctx, user.ID)
-	if err != nil {
-		return
-	}
-
-	// generate a jwt token
+	// calculate jwt expriy
 	var duration = time.Hour * 24
-	if rememberForMonth {
+	if request.RememberForMonth {
 		duration *= 30
 	}
 	var exp = time.Now().Add(duration)
@@ -60,7 +63,7 @@ func (a *AuthService) Login(
 	}
 
 	tokenExpiry = exp
-	userLoginResponse = dbUserToLoginRes(roles, user)
+	userResponse = user
 
 	return
 }

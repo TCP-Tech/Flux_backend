@@ -30,7 +30,10 @@ RETURNING *;
 -- name: GetLocksByFilter :many
 SELECT * FROM locks
 WHERE
-    name ILIKE '%' || sqlc.arg('lock_name')::text || '%'
+    (
+        sqlc.narg('lock_name')::text IS NULL OR
+        name ILIKE '%' || sqlc.arg('lock_name')::text || '%'
+    )
     AND (
         sqlc.narg('created_by')::uuid IS NULL OR
         sqlc.narg('created_by')::uuid = created_by

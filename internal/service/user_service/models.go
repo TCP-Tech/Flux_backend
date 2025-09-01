@@ -7,10 +7,14 @@ import (
 	"github.com/tcp_snm/flux/internal/database"
 )
 
+var (
+	errMsgs = map[string]map[string]string{}
+)
+
 const (
-	RoleManager   UserRole = "role_manager"
-	RoleHC        UserRole = "role_hc"
-	cacheCapacity          = 50
+	RoleManager   = "role_manager"
+	RoleHC        = "role_hc"
+	cacheCapacity = 50
 )
 
 type UserService struct {
@@ -36,12 +40,20 @@ type GetUsersRequest struct {
 	PageSize   int32       `json:"page_size" validate:"min=0,max=10000"`
 }
 
-type UserRole string
+// used for profile viewing and auth stuff
+type User struct {
+	ID           uuid.UUID `json:"id"`
+	RollNo       string    `json:"roll_no"`
+	UserName     string    `json:"user_name"`
+	FirstName    string    `json:"first_name"`
+	LastName     string    `json:"last_name"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+}
 
-// this type must be used only when a
-// "multiple" users are being passed
+// used as a dto between different layers
 type UserMetaData struct {
-	UserID   uuid.UUID `json:"-"`
+	UserID   uuid.UUID `json:"user_id"`
 	UserName string    `json:"user_name"`
 	RollNo   string    `json:"roll_no"`
 }
