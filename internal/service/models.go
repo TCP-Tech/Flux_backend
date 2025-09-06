@@ -10,3 +10,9 @@ type UserCredentialClaims struct {
 	UserName string    `json:"user_name"`
 	jwt.RegisteredClaims
 }
+
+type WaitElement struct {
+	Element any
+	Process func(element any)
+	DelayMS int
+}
