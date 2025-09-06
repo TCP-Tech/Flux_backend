@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
+	"github.com/oleiade/lane"
 	log "github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 )
@@ -29,13 +31,16 @@ const (
 )
 
 var (
-	validate *validator.Validate
-	pool     *pgxpool.Pool
+	validate  *validator.Validate
+	pool      *pgxpool.Pool
+	waitQueue *lane.PQueue
 )
 
 func InitializeServices(mainPool *pgxpool.Pool) {
 	validate = initValidator() // used for validating struct fields
 	pool = mainPool
+	waitQueue = lane.NewPQueue(lane.MINPQ)
+	go processWaitQueue()
 }
 
 func initValidator() *validator.Validate {
@@ -90,4 +95,42 @@ func GetNewTransaction(
 
 	// Return the transaction object and nil error
 	return tx, err
+}
+
+func AddToWaitQueue(waitElement WaitElement) {
+	// calculate wakeup time
+	priority := time.Now().Add(
+		time.Millisecond * time.Duration(waitElement.DelayMS),
+	).UnixMilli()
+	
+	waitQueue.Push(waitElement, int(priority))
+}
+
+func processWaitQueue() {
+	for {
+		// sleep to avoid infinite continuous iterations
+		time.Sleep(time.Millisecond * 50)
+
+		// peek
+		for waitQueue.Size() > 0 {
+			_, expiry := waitQueue.Head()
+			if !isExpired(int64(expiry)) {
+				break
+			}
+			// pop and process
+			rawElement, _ := waitQueue.Pop()
+			waitElement, ok := rawElement.(WaitElement)
+			if !ok {
+				log.Errorf("cannot csat %v to WaitElement", rawElement)
+				continue
+			}
+			// launch it as a goroutine for non-blocking
+			go waitElement.Process(waitElement.Element)
+		}
+	}
+}
+
+func isExpired(unixMilli int64) bool {
+	t := time.UnixMilli(unixMilli)
+	return time.Now().After(t)
 }

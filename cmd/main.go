@@ -149,6 +149,7 @@ func setup() {
 		FullTimestamp: true,
 		PadLevelText: false,
 	})
+	// log.SetFormatter(&log.JSONFormatter{})
 	pool, db := initDatabase()
 	service.InitializeServices(pool)
 	apiConfig = initApi(db)

@@ -26,6 +26,10 @@ var (
 	ErrUnAuthorized              = errors.New("user not allowed to perform this action")
 	ErrNotFound                  = errors.New("entity not found")
 	ErrPartialResult             = errors.New("unable to fetch complete list of requested entities")
+	ErrTaskLaunchError           = errors.New("failed to launch task")
+	ErrTaskSIGTERM               = errors.New("task failed terminate gracefully")
+	ErrTaskKill                  = errors.New("cannot kill task")
+	ErrWaitAlreadyCalled         = errors.New("exec: Wait was already called")
 )
 
 func HandleDBErrors(
