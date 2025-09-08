@@ -47,7 +47,7 @@ func initValidator() *validator.Validate {
 	log.Info("initializing go/playground service validator")
 	validate := validator.New(validator.WithRequiredStructEnabled())
 
-	// This makes error.Field() return "first_name" instead of "FirstName"
+	// This makes error.Field() return sanke case. for eg., "first_name" instead of "FirstName"
 	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
 		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
 		if name == "-" {
@@ -76,7 +76,6 @@ func GetClaimsFromContext(
 }
 
 // getNewTransaction starts a new database transaction using the connection pool.
-// Returns the transaction object (pgx.Tx) and an error if the transaction could not be created.
 func GetNewTransaction(
 	ctx context.Context,
 ) (pgx.Tx, error) {
@@ -111,7 +110,6 @@ func processWaitQueue() {
 		// sleep to avoid infinite continuous iterations
 		time.Sleep(time.Millisecond * 50)
 
-		// peek
 		for waitQueue.Size() > 0 {
 			_, expiry := waitQueue.Head()
 			if !isExpired(int64(expiry)) {
