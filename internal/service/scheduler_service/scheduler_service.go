@@ -9,13 +9,13 @@ import (
 
 func (s *Scheduler) Start() {
 	logrus.Info("initializing scheduler's taskQueue channel with buffer size ", s.QueueBuffer)
-	s.taskQueue = make(chan *Task, s.QueueBuffer)
+	s.taskQueue = make(chan uuid.UUID, s.QueueBuffer)
 
 	logrus.Info("initializing scheduler's tasks map")
 	s.tasks = make(map[uuid.UUID]*Task)
 
 	logrus.Info("initializing scheduler's taskMapLock")
-	s.taskMapLock = sync.RWMutex{}
+	s.taskMapAndResourceLock = sync.RWMutex{}
 
 	logrus.Info("initliazing channel for task released resources")
 	// sending should be non-blocking in any case. so initialize with large size

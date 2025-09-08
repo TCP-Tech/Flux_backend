@@ -35,11 +35,11 @@ func (s *Scheduler) ScheduleTask(req TaskRequest) (uuid.UUID, error) {
 		},
 	).Info("queueing task")
 
-	s.taskMapLock.Lock()
-	defer s.taskMapLock.Unlock()
+	s.taskMapAndResourceLock.Lock()
+	defer s.taskMapAndResourceLock.Unlock()
 
 	s.tasks[taskID] = &task
-	s.taskQueue <- &task
+	s.taskQueue <- taskID
 
 	return taskID, nil
 }

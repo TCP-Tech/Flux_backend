@@ -46,9 +46,10 @@ type Scheduler struct {
 	Resources       Resources
 	QueueBuffer     int32
 	resourceRelease chan Resources
-	taskQueue       chan *Task
+	taskQueue       chan uuid.UUID
 	tasks           map[uuid.UUID]*Task
-	taskMapLock     sync.RWMutex
+	// scheduler's resources and tasks map use the below lock
+	taskMapAndResourceLock sync.RWMutex
 }
 
 type Command struct {

@@ -154,7 +154,7 @@ func (s *Scheduler) queueWaitingTask(rawTask any) {
 		return
 	}
 
-	s.taskQueue <- task
+	s.taskQueue <- task.TaskID
 }
 
 func (t *Task) getState() TaskState {
@@ -173,8 +173,8 @@ func (t *Task) getState() TaskState {
 }
 
 func (s *Scheduler) getTask(taskID uuid.UUID) (*Task, error) {
-	s.taskMapLock.RLock()
-	defer s.taskMapLock.RUnlock()
+	s.taskMapAndResourceLock.RLock()
+	defer s.taskMapAndResourceLock.RUnlock()
 
 	// get task
 	task, ok := s.tasks[taskID]
@@ -230,7 +230,10 @@ func getTaskStateFromError(err error) TaskState {
 	}
 
 	// command not even started. unknown error
-	logrus.Errorf("cannot cast error '%v' to exec.ExitError", err)
+	logrus.Errorf(
+		"cannot cast error '%v' to exec.ExitError. Check if your command is correct!",
+		err,
+	)
 	return StateFailed
 }
 
@@ -243,6 +246,7 @@ func (t *Task) getLogger(prefix string, suffix string) *logrus.Entry {
 	)
 }
 
+// not thread safe
 func (s *Scheduler) cleanTaskReleasedResources() {
 	for {
 		select {

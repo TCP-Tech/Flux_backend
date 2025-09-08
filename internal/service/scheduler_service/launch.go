@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
@@ -15,23 +16,18 @@ func (s *Scheduler) launch() {
 	}
 }
 
-func (s *Scheduler) launchTask(req *Task) {
-	if req == nil {
-		logrus.Error("nil taskMetaData received, cannot launch task")
-		return
-	}
-
+func (s *Scheduler) launchTask(reqID uuid.UUID) {
 	// aquire the lock for planning and cleaning purposes
-	s.taskMapLock.Lock()
-	defer s.taskMapLock.Unlock()
+	s.taskMapAndResourceLock.Lock()
+	defer s.taskMapAndResourceLock.Unlock()
 
 	// get task's data from map
-	task, ok := s.tasks[req.TaskID]
+	task, ok := s.tasks[reqID]
 	if !ok {
 		err := fmt.Errorf(
 			"%w, task with id %v is absent in the map while launching",
 			flux_errors.ErrTaskLaunchError,
-			req.TaskID,
+			reqID,
 		)
 		logrus.Error(err)
 		return
@@ -48,7 +44,7 @@ func (s *Scheduler) launchTask(req *Task) {
 	task.SchedulingTries++
 
 	// plan
-	canLaunch := s.plan(req)
+	canLaunch := s.plan(task)
 	if !canLaunch {
 		// max retries exceeded, cannot launch the task as resources are too busy
 		if task.SchedulingTries >= task.SchedulingRetries {
@@ -59,7 +55,7 @@ func (s *Scheduler) launchTask(req *Task) {
 			)
 			launchLogger.Error(err)
 			res := TaskResponse{
-				TaskID: req.TaskID,
+				TaskID: reqID,
 				Out:    nil,
 				Error:  err,
 			}
@@ -75,12 +71,12 @@ func (s *Scheduler) launchTask(req *Task) {
 		)
 
 		// increase its priority to avoid unfairness
-		(*req).Priority += 10
+		(*task).Priority += 10
 
 		// send it to sleep
 		service.AddToWaitQueue(
 			service.WaitElement{
-				Element: req,
+				Element: reqID,
 				Process: s.queueWaitingTask,
 				DelayMS: 5000,
 			},
@@ -89,8 +85,8 @@ func (s *Scheduler) launchTask(req *Task) {
 	}
 
 	// update the task
-	req.LaunchTime = time.Now()
+	task.LaunchTime = time.Now()
 
 	// execute the request
-	go s.execute(req)
+	go s.execute(task)
 }
