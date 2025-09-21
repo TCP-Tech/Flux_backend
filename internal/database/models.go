@@ -135,17 +135,14 @@ type StandardProblemDatum struct {
 }
 
 type Submission struct {
-	ID           uuid.UUID        `json:"id"`
-	BotAccountID uuid.UUID        `json:"bot_account_id"`
-	WebsiteData  *json.RawMessage `json:"website_data"`
-	SubmittedBy  uuid.UUID        `json:"submitted_by"`
-	ContestID    *uuid.UUID       `json:"contest_id"`
-	ProblemID    uuid.UUID        `json:"problem_id"`
-	Language     string           `json:"language"`
-	Solution     string           `json:"solution"`
-	Status       *string          `json:"status"`
-	CreatedAt    time.Time        `json:"created_at"`
-	UpdatedAt    time.Time        `json:"updated_at"`
+	ID          uuid.UUID       `json:"id"`
+	SubmittedBy uuid.UUID       `json:"submitted_by"`
+	ContestID   *uuid.UUID      `json:"contest_id"`
+	ProblemID   int32           `json:"problem_id"`
+	Solution    json.RawMessage `json:"solution"`
+	State       string          `json:"state"`
+	SubmittedAt time.Time       `json:"submitted_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 type Token struct {

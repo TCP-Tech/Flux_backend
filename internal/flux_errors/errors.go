@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	log "github.com/sirupsen/logrus"
@@ -27,9 +28,12 @@ var (
 	ErrNotFound                  = errors.New("entity not found")
 	ErrPartialResult             = errors.New("unable to fetch complete list of requested entities")
 	ErrTaskLaunchError           = errors.New("failed to launch task")
-	ErrTaskSIGTERM               = errors.New("task failed terminate gracefully")
+	ErrTaskSIGTERM               = errors.New("task failed to terminate gracefully")
 	ErrTaskKill                  = errors.New("cannot kill task")
+	ErrSubmissionFailed          = errors.New("submission failed")
 	ErrWaitAlreadyCalled         = errors.New("exec: Wait was already called")
+	ErrHttpResponse              = errors.New("error occurred with http response")
+	ErrMonitorStart              = errors.New("monitor failed to start")
 )
 
 func HandleDBErrors(
@@ -129,5 +133,33 @@ func HandleUniqueKeyError(pgErr *pgconn.PgError, msgUniqueConstraint map[string]
 		ErrInvalidRequest,
 		msg,
 	)
+	return err
+}
+
+// handles inter process communication errors
+func HandleIPCError(err error) error {
+	var opError *net.OpError
+	if errors.As(err, &opError) {
+		err = fmt.Errorf(
+			"%w, \"%s\" error occurred during \"%s\" operation with %s",
+			ErrInternal,
+			opError.Error(),
+			opError.Op,
+			opError.Addr,
+		)
+		log.WithFields(
+			log.Fields{
+				"network":        opError.Net,
+				"source address": opError.Source,
+			},
+		).Error(err)
+		return err
+	}
+
+	// unknown error
+	err = fmt.Errorf(
+		"%w, %w", ErrInternal, err,
+	)
+	log.Error(err)
 	return err
 }
