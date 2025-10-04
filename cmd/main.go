@@ -15,6 +15,8 @@ import (
 	"github.com/tcp_snm/flux/internal/service/contest_service"
 	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
+	"github.com/tcp_snm/flux/internal/service/scheduler_service"
+	"github.com/tcp_snm/flux/internal/service/submission_service"
 	"github.com/tcp_snm/flux/internal/service/tournament_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 
@@ -115,7 +117,7 @@ func initTournamentService(
 	}
 }
 
-func initApi(db *database.Queries) *api.Api {
+func initServices(db *database.Queries) *api.Api {
 	log.Info("initializing api config")
 	us := initUserService(db)
 	log.Info("user service created")
@@ -129,6 +131,35 @@ func initApi(db *database.Queries) *api.Api {
 	log.Info("contest service created")
 	ts := initTournamentService(db, us, ls, cs)
 	log.Info("tournament service created")
+
+	// initialize scheduler
+	scheduler := scheduler_service.Scheduler{
+		Resources: scheduler_service.Resources{
+			CPU:    600,
+			Memory: 10000,
+		},
+		QueueBuffer: 30,
+	}
+	scheduler.Start()
+	log.Info("initialized scheduler")
+
+	ss := submission_service.SubmissionService{
+		DB:             db,
+		ProblemService: ps,
+		ContestService: cs,
+	}
+	ss.Start(
+		submission_service.NyxScrStrtCmd{
+			Name:      "nyx",
+			ExtraArgs: []string{"--debug", "--cf-submit-url", "https://codeforces.com/problemset/submit"},
+		},
+		"https://codeforces.com/api/user.status",
+		// TODO: change this
+		10,
+		&scheduler,
+	)
+	log.Info("initialized scheduler service")
+
 	a := api.Api{
 		AuthServiceConfig:       as,
 		UserServiceConfig:       us,
@@ -136,6 +167,7 @@ func initApi(db *database.Queries) *api.Api {
 		LockServiceConfig:       ls,
 		ContestServiceConfig:    cs,
 		TournamentServiceConfig: ts,
+		SubmissionService:       &ss,
 	}
 	return &a
 }
@@ -147,12 +179,12 @@ func setup() {
 		ForceColors: true,
 		// Add the full timestamp
 		FullTimestamp: true,
-		PadLevelText: false,
+		PadLevelText:  false,
 	})
-	// log.SetFormatter(&log.JSONFormatter{})
+	log.SetLevel(log.DebugLevel)
 	pool, db := initDatabase()
 	service.InitializeServices(pool)
-	apiConfig = initApi(db)
+	apiConfig = initServices(db)
 	email.StartEmailWorkers(1)
 }
 

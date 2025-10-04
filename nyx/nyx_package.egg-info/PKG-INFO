@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: nyx_package
+Version: 0.1.0
+Requires-Dist: click
+Requires-Dist: seleniumbase
+Requires-Dist: flask
+Dynamic: requires-dist

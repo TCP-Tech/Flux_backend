@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
+	"github.com/tcp_snm/flux/internal/service"
 	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
@@ -18,7 +19,7 @@ var (
 
 	msgUniqueConstraint = map[string]string{
 		"uq_problem_id":      "entry with given problem id already exist",
-		"uq_submission_link": "entry with given submission link already exist",
+		"uq_site_problem_code": "entry with given site_problem_code already exist",
 	}
 
 	errMsgs = map[string]map[string]string{
@@ -28,8 +29,9 @@ var (
 )
 
 const (
-	EvalCodeforces = "codeforces"
-	EvalNil        = "invalid_evaluator"
+	EvalCodeforces                                  = "codeforces"
+	EvalNil                                         = "invalid_evaluator"
+	InternalProblemQuery service.InternalContextKey = "internal_problem_query"
 )
 
 type ProblemService struct {
@@ -70,7 +72,9 @@ type StandardProblemData struct {
 	Notes               *string           `json:"notes"`
 	MemoryLimitKB       int32             `json:"memory_limit_kb" validate:"min=1024"`
 	TimeLimitMS         int32             `json:"time_limit_ms" validate:"min=500"`
-	SubmissionLink      *string           `json:"submission_link" validate:"url"`
+	// if we built an evaluator that evaluates problem without submitting to any platform
+	// then problemID is enough to identify the problem
+	SiteProblemCode *string `json:"site_problem_code"`
 }
 
 type dbSpdParams struct {

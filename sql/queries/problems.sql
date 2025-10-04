@@ -20,7 +20,7 @@ INSERT INTO standard_problem_data (
     notes,
     memory_limit_kb,
     time_limit_ms,
-    submission_link,
+    site_problem_code,
     last_updated_by
 ) VALUES (
     $1,  -- problem_id
@@ -32,7 +32,7 @@ INSERT INTO standard_problem_data (
     $7,  -- notes
     $8,  -- memory_limit_kb
     $9,  -- time_limit_ms
-    $10,  -- submission_link
+    $10,  -- site_problem_code
     $11  -- last_)updated_by
 )
 RETURNING *;
@@ -84,7 +84,7 @@ SET
     notes = $7,
     memory_limit_kb = $8,
     time_limit_ms = $9,
-    submission_link = $10,
+    site_problem_code = $10,
     last_updated_by = $11
 WHERE
     problem_id = $1

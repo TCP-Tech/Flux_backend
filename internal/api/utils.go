@@ -35,6 +35,9 @@ func handlerError(err error, w http.ResponseWriter) {
 		var statusCode int
 		responseMessage := err.Error()
 		switch {
+		case errors.Is(err, flux_errors.ErrInternal):
+			statusCode = http.StatusInternalServerError
+			responseMessage = "internal error. please try again later"
 		case errors.Is(err, flux_errors.ErrVerificationTokenExpired):
 			fallthrough
 		case errors.Is(err, flux_errors.ErrInvalidRequest):

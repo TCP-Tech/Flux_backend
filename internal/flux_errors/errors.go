@@ -34,26 +34,26 @@ var (
 	ErrWaitAlreadyCalled         = errors.New("exec: Wait was already called")
 	ErrHttpResponse              = errors.New("error occurred with http response")
 	ErrMonitorStart              = errors.New("monitor failed to start")
+	ErrComponentStart            = errors.New("cannot start component")
+	ErrEntityAlreadyExist        = errors.New("entity with given key already exist")
 )
 
 func HandleDBErrors(
 	err error,
 	errMsgs map[string]map[string]string,
-	fallBackMsg string,
+	contextMessage string,
 ) error {
 	// assume its an internal error first
 	err = fmt.Errorf(
 		"%w, %s, %w",
 		ErrInternal,
-		fallBackMsg,
+		contextMessage,
 		err,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf(
-			"%w, entity with given id doesn't exist",
-			ErrNotFound,
-		)
+		log.Error(fmt.Sprintf("%s, %v", contextMessage, ErrNotFound))
+		return ErrNotFound
 	}
 
 	// check if its a pg error
@@ -64,7 +64,7 @@ func HandleDBErrors(
 	}
 
 	if errMsgs == nil {
-		log.Warnf("go null errMsgs")
+		log.Warnf("got null errMsgs")
 		log.Error(err)
 		return err
 	}
@@ -116,6 +116,7 @@ func HandleForeignKeyError(pgErr *pgconn.PgError, msgForeignKey map[string]strin
 		ErrInvalidRequest,
 		msg,
 	)
+	log.Error(err)
 	return err
 }
 
@@ -133,26 +134,23 @@ func HandleUniqueKeyError(pgErr *pgconn.PgError, msgUniqueConstraint map[string]
 		ErrInvalidRequest,
 		msg,
 	)
+	log.Error(err)
 	return err
 }
 
 // handles inter process communication errors
-func HandleIPCError(err error) error {
+func WrapIPCError(err error) error {
 	var opError *net.OpError
 	if errors.As(err, &opError) {
 		err = fmt.Errorf(
-			"%w, \"%s\" error occurred during \"%s\" operation with %s",
+			"%w, \"%s\" error occurred during \"%s\" operation with %s, network: %s, dest: %s",
 			ErrInternal,
 			opError.Error(),
 			opError.Op,
 			opError.Addr,
+			opError.Net,
+			opError.Addr,
 		)
-		log.WithFields(
-			log.Fields{
-				"network":        opError.Net,
-				"source address": opError.Source,
-			},
-		).Error(err)
 		return err
 	}
 
@@ -160,6 +158,5 @@ func HandleIPCError(err error) error {
 	err = fmt.Errorf(
 		"%w, %w", ErrInternal, err,
 	)
-	log.Error(err)
 	return err
 }

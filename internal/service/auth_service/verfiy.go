@@ -103,7 +103,6 @@ func (a *AuthService) createTokenInDb(
 			Payload:     json.RawMessage("{}"),
 		},
 	)
-
 	if err != nil {
 		log.Errorf("unable to create a verification token in db, %v", err)
 		return errors.Join(flux_errors.ErrInternal, err)
@@ -173,7 +172,6 @@ func (a *AuthService) invalidateVerificationToken(
 		Email:   userMail,
 		Purpose: string(purpose),
 	})
-
 	if err != nil {
 		log.Errorf("unable to invalidate token, %v", err)
 		err = errors.Join(flux_errors.ErrInternal, err)
@@ -182,7 +180,7 @@ func (a *AuthService) invalidateVerificationToken(
 	log.WithFields(log.Fields{
 		"token":   token,
 		"purpose": string(purpose),
-	}).Info("invalidated token")
+	}).Debug("invalidated token")
 	return err
 }
 

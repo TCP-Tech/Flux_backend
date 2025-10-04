@@ -25,13 +25,19 @@ func (p *ProblemService) GetProblemByID(
 	}
 
 	// get claims
-	claims, err := service.GetClaimsFromContext(ctx)
-	if err != nil {
-		return Problem{}, err
+	internal := false
+	var claims service.UserCredentialClaims
+	if ctx.Value(InternalProblemQuery) != nil {
+		internal = true
+	} else {
+		claims, err = service.GetClaimsFromContext(ctx)
+		if err != nil {
+			return Problem{}, err
+		}
 	}
 
 	// authorize
-	if dbProblem.Access != nil {
+	if dbProblem.Access != nil && !internal {
 		err = p.LockServiceConfig.AuthorizeLock(
 			ctx,
 			dbProblem.Timeout,

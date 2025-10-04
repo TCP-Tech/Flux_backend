@@ -151,7 +151,7 @@ func dbSpdToServiceSpd(
 		Notes:               dbSpd.Notes,
 		MemoryLimitKB:       dbSpd.MemoryLimitKb,
 		TimeLimitMS:         dbSpd.TimeLimitMs,
-		SubmissionLink:      dbSpd.SubmissionLink,
+		SiteProblemCode:     dbSpd.SiteProblemCode,
 	}, nil
 
 }

@@ -2,7 +2,9 @@ package scheduler_service
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"syscall"
 
 	"github.com/tcp_snm/flux/internal/flux_errors"
 )
@@ -28,6 +30,14 @@ func (s *Scheduler) execute(task *Task) {
 	// form the cmd object
 	// Note: cmd is a pointer to exec.Cmd. exec.Command() never returns nil
 	cmd := exec.Command(task.Command.Name, task.Command.Args...)
+
+	// This hook is called right before execve() in the child process.
+	// We use syscall.SysProcAttr to set up the child's environment.
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Pdeathsig is the specific Linux option that tells the child:
+		// "If my parent dies, send me this signal."
+		Pdeathsig: syscall.SIGKILL,
+	}
 
 	switch task.Command.CmdExecType {
 	case CmdRun:
@@ -70,6 +80,17 @@ func (s *Scheduler) executeLongRunningTask(task *Task) {
 
 	cmd := exec.Command(task.Command.Name, task.Command.Args...)
 
+	// This hook is called right before execve() in the child process.
+	// We use syscall.SysProcAttr to set up the child's environment.
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		// Pdeathsig is the specific Linux option that tells the child:
+		// "If my parent dies, send me this signal."
+		Pdeathsig: syscall.SIGKILL,
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	err := cmd.Start()
 	if err != nil {
 		go task.OnLaunchComplete(
@@ -85,6 +106,8 @@ func (s *Scheduler) executeLongRunningTask(task *Task) {
 
 	task.State = StateRunning
 	task.cmd = cmd
+
+	executeLogger.Debugf("process id: %v", cmd.Process.Pid)
 
 	executeLogger.Debug("launching a gor to monitor task for complete")
 	go s.waitForTaskComplete(task)

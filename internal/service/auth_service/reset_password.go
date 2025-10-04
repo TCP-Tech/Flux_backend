@@ -44,9 +44,8 @@ func (a *AuthService) ResetPassword(
 	// create a custom logger
 	resetLogger := log.WithFields(
 		log.Fields{
-			"user_name": request.UserName,
-			"roll_no":   request.RollNo,
-			"purpose":   string(email.PurposeEmailPasswordReset),
+			"request": request,
+			"purpose": string(email.PurposeEmailPasswordReset),
 		},
 	)
 
