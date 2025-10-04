@@ -61,7 +61,7 @@ func (p *ProblemService) UpdateStandardProblem(
 			Notes:              spd.Notes,
 			MemoryLimitKb:      spd.MemoryLimitKB,
 			TimeLimitMs:        spd.TimeLimitMS,
-			SubmissionLink:     spd.SubmissionLink,
+			SiteProblemCode:    spd.SiteProblemCode,
 			LastUpdatedBy:      claims.UserId,
 		},
 	)

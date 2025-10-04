@@ -16,8 +16,8 @@ func NewV1Router() *chi.Mux {
 	v1.Get("/auth/signup", apiConfig.HandlerSignUpSendMail)
 	v1.Post("/auth/signup", apiConfig.HandlerSignUp)
 	v1.Post("/auth/login", apiConfig.HandlerLogin)
-	v1.Get("/auth/reset-password", apiConfig.HandlerResetPasswordSendMail)
-	v1.Post("/auth/reset-password", apiConfig.HandlerResetPassword)
+	v1.Get("/auth/reset-password-send-email", apiConfig.HandlerResetPasswordSendMail)
+	v1.Post("/auth/reset-password-verify", apiConfig.HandlerResetPassword)
 
 	// locks layer
 	// get locks
@@ -65,5 +65,8 @@ func NewV1Router() *chi.Mux {
 	v1.Post("/tournaments/rounds", middleware.JWTMiddleware(apiConfig.HandlerCreateTournamentRound))
 	// update
 	v1.Put("/tournaments/contests", middleware.JWTMiddleware(apiConfig.HandlerChangeTournamentContest))
+
+	// submit
+	v1.Post("/submit", middleware.JWTMiddleware(apiConfig.HandlerSubmit))
 	return v1
 }

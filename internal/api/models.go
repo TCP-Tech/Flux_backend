@@ -5,6 +5,7 @@ import (
 	"github.com/tcp_snm/flux/internal/service/contest_service"
 	"github.com/tcp_snm/flux/internal/service/lock_service"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
+	"github.com/tcp_snm/flux/internal/service/submission_service"
 	"github.com/tcp_snm/flux/internal/service/tournament_service"
 	"github.com/tcp_snm/flux/internal/service/user_service"
 )
@@ -16,4 +17,5 @@ type Api struct {
 	LockServiceConfig       *lock_service.LockService
 	ContestServiceConfig    *contest_service.ContestService
 	TournamentServiceConfig *tournament_service.TournamentService
+	SubmissionService       *submission_service.SubmissionService
 }

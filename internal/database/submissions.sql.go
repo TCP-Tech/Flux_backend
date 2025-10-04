@@ -12,6 +12,67 @@ import (
 	"github.com/google/uuid"
 )
 
+const bulkUpdateCfSubmission = `-- name: BulkUpdateCfSubmission :exec
+UPDATE cf_submissions
+SET
+    time_consumed_millis = data.time_consumed_millis,
+    memory_consumed_bytes = data.memory_consumed_bytes,
+    passed_test_count = data.passed_test_count
+FROM (
+    SELECT 
+        id_arr.id,
+        time_arr.time_consumed_millis,
+        mem_arr.memory_consumed_bytes,
+        passed_arr.passed_test_count
+    FROM UNNEST($1::BIGINT[]) WITH ORDINALITY AS id_arr(id, idx)
+    JOIN UNNEST($2::INTEGER[]) WITH ORDINALITY AS time_arr(time_consumed_millis, idx2) ON idx = idx2
+    JOIN UNNEST($3::INTEGER[]) WITH ORDINALITY AS mem_arr(memory_consumed_bytes, idx3) ON idx = idx3
+    JOIN UNNEST($4::INTEGER[]) WITH ORDINALITY AS passed_arr(passed_test_count, idx4) ON idx = idx4
+) AS data
+WHERE cf_submissions.cf_sub_id = data.id
+`
+
+type BulkUpdateCfSubmissionParams struct {
+	Ids              []int64 `json:"ids"`
+	Times            []int32 `json:"times"`
+	Memories         []int32 `json:"memories"`
+	PassedTestCounts []int32 `json:"passed_test_counts"`
+}
+
+func (q *Queries) BulkUpdateCfSubmission(ctx context.Context, arg BulkUpdateCfSubmissionParams) error {
+	_, err := q.db.Exec(ctx, bulkUpdateCfSubmission,
+		arg.Ids,
+		arg.Times,
+		arg.Memories,
+		arg.PassedTestCounts,
+	)
+	return err
+}
+
+const bulkUpdateSubmissionState = `-- name: BulkUpdateSubmissionState :exec
+UPDATE submissions
+SET
+    state = data.state
+FROM (
+    SELECT
+        id_arr.id,
+        state_arr.state
+    FROM UNNEST($1::uuid[]) WITH ORDINALITY AS id_arr(id, idx)
+    JOIN UNNEST($2::VARCHAR[]) WITH ORDINALITY AS state_arr(state, idx2) ON idx = idx2
+) AS data
+WHERE submissions.id = data.id
+`
+
+type BulkUpdateSubmissionStateParams struct {
+	Ids    []uuid.UUID `json:"ids"`
+	States []string    `json:"states"`
+}
+
+func (q *Queries) BulkUpdateSubmissionState(ctx context.Context, arg BulkUpdateSubmissionStateParams) error {
+	_, err := q.db.Exec(ctx, bulkUpdateSubmissionState, arg.Ids, arg.States)
+	return err
+}
+
 const canSubmitProblemInPractice = `-- name: CanSubmitProblemInPractice :one
 SELECT COALESCE(
     max_end_time IS NULL OR
@@ -31,6 +92,134 @@ func (q *Queries) CanSubmitProblemInPractice(ctx context.Context, problemID int3
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const getBulkCfSubmission = `-- name: GetBulkCfSubmission :many
+SELECT s.state, cs.cf_sub_id, cs.submission_id, cs.time_consumed_millis, cs.memory_consumed_bytes, cs.passed_test_count 
+FROM cf_submissions cs
+JOIN submissions s ON cs.submission_id = s.id
+WHERE s.state != ALL($1::VARCHAR[]) AND cs.cf_sub_id IS NOT NULL
+`
+
+type GetBulkCfSubmissionRow struct {
+	State               string    `json:"state"`
+	CfSubID             int64     `json:"cf_sub_id"`
+	SubmissionID        uuid.UUID `json:"submission_id"`
+	TimeConsumedMillis  int32     `json:"time_consumed_millis"`
+	MemoryConsumedBytes int32     `json:"memory_consumed_bytes"`
+	PassedTestCount     int32     `json:"passed_test_count"`
+}
+
+func (q *Queries) GetBulkCfSubmission(ctx context.Context, cfSinkStates []string) ([]GetBulkCfSubmissionRow, error) {
+	rows, err := q.db.Query(ctx, getBulkCfSubmission, cfSinkStates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetBulkCfSubmissionRow
+	for rows.Next() {
+		var i GetBulkCfSubmissionRow
+		if err := rows.Scan(
+			&i.State,
+			&i.CfSubID,
+			&i.SubmissionID,
+			&i.TimeConsumedMillis,
+			&i.MemoryConsumedBytes,
+			&i.PassedTestCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getCfSubmissionById = `-- name: GetCfSubmissionById :one
+SELECT cs.cf_sub_id, cs.time_consumed_millis, 
+    cs.memory_consumed_bytes, cs.passed_test_count
+FROM submissions s LEFT JOIN cf_submissions cs ON s.id = cs.submission_id
+WHERE s.id = $1
+`
+
+type GetCfSubmissionByIdRow struct {
+	CfSubID             *int64 `json:"cf_sub_id"`
+	TimeConsumedMillis  *int32 `json:"time_consumed_millis"`
+	MemoryConsumedBytes *int32 `json:"memory_consumed_bytes"`
+	PassedTestCount     *int32 `json:"passed_test_count"`
+}
+
+func (q *Queries) GetCfSubmissionById(ctx context.Context, id uuid.UUID) (GetCfSubmissionByIdRow, error) {
+	row := q.db.QueryRow(ctx, getCfSubmissionById, id)
+	var i GetCfSubmissionByIdRow
+	err := row.Scan(
+		&i.CfSubID,
+		&i.TimeConsumedMillis,
+		&i.MemoryConsumedBytes,
+		&i.PassedTestCount,
+	)
+	return i, err
+}
+
+const getSubmissionByID = `-- name: GetSubmissionByID :one
+SELECT id, submitted_by, contest_id, problem_id, solution, state, submitted_at, updated_at From submissions WHERE id=$1
+`
+
+func (q *Queries) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error) {
+	row := q.db.QueryRow(ctx, getSubmissionByID, id)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.SubmittedBy,
+		&i.ContestID,
+		&i.ProblemID,
+		&i.Solution,
+		&i.State,
+		&i.SubmittedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertCfSubmission = `-- name: InsertCfSubmission :one
+INSERT INTO cf_submissions
+    (
+        cf_sub_id,
+        submission_id,
+        time_consumed_millis,
+        memory_consumed_bytes,
+        passed_test_count
+    )
+VALUES ($1, $2, $3, $4, $5) RETURNING cf_sub_id, submission_id, time_consumed_millis, memory_consumed_bytes, passed_test_count
+`
+
+type InsertCfSubmissionParams struct {
+	CfSubID             int64     `json:"cf_sub_id"`
+	SubmissionID        uuid.UUID `json:"submission_id"`
+	TimeConsumedMillis  int32     `json:"time_consumed_millis"`
+	MemoryConsumedBytes int32     `json:"memory_consumed_bytes"`
+	PassedTestCount     int32     `json:"passed_test_count"`
+}
+
+func (q *Queries) InsertCfSubmission(ctx context.Context, arg InsertCfSubmissionParams) (CfSubmission, error) {
+	row := q.db.QueryRow(ctx, insertCfSubmission,
+		arg.CfSubID,
+		arg.SubmissionID,
+		arg.TimeConsumedMillis,
+		arg.MemoryConsumedBytes,
+		arg.PassedTestCount,
+	)
+	var i CfSubmission
+	err := row.Scan(
+		&i.CfSubID,
+		&i.SubmissionID,
+		&i.TimeConsumedMillis,
+		&i.MemoryConsumedBytes,
+		&i.PassedTestCount,
+	)
+	return i, err
 }
 
 const insertSubmission = `-- name: InsertSubmission :one
@@ -66,6 +255,64 @@ func (q *Queries) InsertSubmission(ctx context.Context, arg InsertSubmissionPara
 		arg.Solution,
 		arg.State,
 	)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.SubmittedBy,
+		&i.ContestID,
+		&i.ProblemID,
+		&i.Solution,
+		&i.State,
+		&i.SubmittedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const pollPendingSubmissions = `-- name: PollPendingSubmissions :many
+SELECT id, submitted_by, contest_id, problem_id, solution, state, submitted_at, updated_at FROM submissions WHERE state = ANY($1::VARCHAR[])
+`
+
+func (q *Queries) PollPendingSubmissions(ctx context.Context, pendingStates []string) ([]Submission, error) {
+	rows, err := q.db.Query(ctx, pollPendingSubmissions, pendingStates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Submission
+	for rows.Next() {
+		var i Submission
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubmittedBy,
+			&i.ContestID,
+			&i.ProblemID,
+			&i.Solution,
+			&i.State,
+			&i.SubmittedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateSubmissionByID = `-- name: UpdateSubmissionByID :one
+UPDATE submissions SET state=$2 WHERE id=$1 RETURNING id, submitted_by, contest_id, problem_id, solution, state, submitted_at, updated_at
+`
+
+type UpdateSubmissionByIDParams struct {
+	ID    uuid.UUID `json:"id"`
+	State string    `json:"state"`
+}
+
+func (q *Queries) UpdateSubmissionByID(ctx context.Context, arg UpdateSubmissionByIDParams) (Submission, error) {
+	row := q.db.QueryRow(ctx, updateSubmissionByID, arg.ID, arg.State)
 	var i Submission
 	err := row.Scan(
 		&i.ID,

@@ -64,6 +64,14 @@ type Bot struct {
 	UpdatedAt   time.Time        `json:"updated_at"`
 }
 
+type CfSubmission struct {
+	CfSubID             int64     `json:"cf_sub_id"`
+	SubmissionID        uuid.UUID `json:"submission_id"`
+	TimeConsumedMillis  int32     `json:"time_consumed_millis"`
+	MemoryConsumedBytes int32     `json:"memory_consumed_bytes"`
+	PassedTestCount     int32     `json:"passed_test_count"`
+}
+
 type Contest struct {
 	ID          uuid.UUID  `json:"id"`
 	Title       string     `json:"title"`
@@ -130,7 +138,7 @@ type StandardProblemDatum struct {
 	Notes              *string          `json:"notes"`
 	MemoryLimitKb      int32            `json:"memory_limit_kb"`
 	TimeLimitMs        int32            `json:"time_limit_ms"`
-	SubmissionLink     *string          `json:"submission_link"`
+	SiteProblemCode    *string          `json:"site_problem_code"`
 	LastUpdatedBy      uuid.UUID        `json:"last_updated_by"`
 }
 

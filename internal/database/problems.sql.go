@@ -69,7 +69,7 @@ INSERT INTO standard_problem_data (
     notes,
     memory_limit_kb,
     time_limit_ms,
-    submission_link,
+    site_problem_code,
     last_updated_by
 ) VALUES (
     $1,  -- problem_id
@@ -81,10 +81,10 @@ INSERT INTO standard_problem_data (
     $7,  -- notes
     $8,  -- memory_limit_kb
     $9,  -- time_limit_ms
-    $10,  -- submission_link
+    $10,  -- site_problem_code
     $11  -- last_)updated_by
 )
-RETURNING problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, submission_link, last_updated_by
+RETURNING problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, site_problem_code, last_updated_by
 `
 
 type AddStandardProblemDataParams struct {
@@ -97,7 +97,7 @@ type AddStandardProblemDataParams struct {
 	Notes              *string          `json:"notes"`
 	MemoryLimitKb      int32            `json:"memory_limit_kb"`
 	TimeLimitMs        int32            `json:"time_limit_ms"`
-	SubmissionLink     *string          `json:"submission_link"`
+	SiteProblemCode    *string          `json:"site_problem_code"`
 	LastUpdatedBy      uuid.UUID        `json:"last_updated_by"`
 }
 
@@ -112,7 +112,7 @@ func (q *Queries) AddStandardProblemData(ctx context.Context, arg AddStandardPro
 		arg.Notes,
 		arg.MemoryLimitKb,
 		arg.TimeLimitMs,
-		arg.SubmissionLink,
+		arg.SiteProblemCode,
 		arg.LastUpdatedBy,
 	)
 	var i StandardProblemDatum
@@ -126,7 +126,7 @@ func (q *Queries) AddStandardProblemData(ctx context.Context, arg AddStandardPro
 		&i.Notes,
 		&i.MemoryLimitKb,
 		&i.TimeLimitMs,
-		&i.SubmissionLink,
+		&i.SiteProblemCode,
 		&i.LastUpdatedBy,
 	)
 	return i, err
@@ -307,7 +307,7 @@ func (q *Queries) GetProblemsByFilters(ctx context.Context, arg GetProblemsByFil
 }
 
 const getStandardProblemData = `-- name: GetStandardProblemData :one
-SELECT problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, submission_link, last_updated_by FROM standard_problem_data WHERE problem_id=$1
+SELECT problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, site_problem_code, last_updated_by FROM standard_problem_data WHERE problem_id=$1
 `
 
 func (q *Queries) GetStandardProblemData(ctx context.Context, problemID int32) (StandardProblemDatum, error) {
@@ -323,7 +323,7 @@ func (q *Queries) GetStandardProblemData(ctx context.Context, problemID int32) (
 		&i.Notes,
 		&i.MemoryLimitKb,
 		&i.TimeLimitMs,
-		&i.SubmissionLink,
+		&i.SiteProblemCode,
 		&i.LastUpdatedBy,
 	)
 	return i, err
@@ -385,11 +385,11 @@ SET
     notes = $7,
     memory_limit_kb = $8,
     time_limit_ms = $9,
-    submission_link = $10,
+    site_problem_code = $10,
     last_updated_by = $11
 WHERE
     problem_id = $1
-RETURNING problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, submission_link, last_updated_by
+RETURNING problem_id, statement, input_format, output_format, function_definitons, example_testcases, notes, memory_limit_kb, time_limit_ms, site_problem_code, last_updated_by
 `
 
 type UpdateStandardProblemDataParams struct {
@@ -402,7 +402,7 @@ type UpdateStandardProblemDataParams struct {
 	Notes              *string          `json:"notes"`
 	MemoryLimitKb      int32            `json:"memory_limit_kb"`
 	TimeLimitMs        int32            `json:"time_limit_ms"`
-	SubmissionLink     *string          `json:"submission_link"`
+	SiteProblemCode    *string          `json:"site_problem_code"`
 	LastUpdatedBy      uuid.UUID        `json:"last_updated_by"`
 }
 
@@ -417,7 +417,7 @@ func (q *Queries) UpdateStandardProblemData(ctx context.Context, arg UpdateStand
 		arg.Notes,
 		arg.MemoryLimitKb,
 		arg.TimeLimitMs,
-		arg.SubmissionLink,
+		arg.SiteProblemCode,
 		arg.LastUpdatedBy,
 	)
 	var i StandardProblemDatum
@@ -431,7 +431,7 @@ func (q *Queries) UpdateStandardProblemData(ctx context.Context, arg UpdateStand
 		&i.Notes,
 		&i.MemoryLimitKb,
 		&i.TimeLimitMs,
-		&i.SubmissionLink,
+		&i.SiteProblemCode,
 		&i.LastUpdatedBy,
 	)
 	return i, err

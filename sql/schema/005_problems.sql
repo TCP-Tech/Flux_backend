@@ -25,15 +25,15 @@ CREATE TABLE standard_problem_data (
     notes TEXT,
     memory_limit_kb INTEGER NOT NULL,
     time_limit_ms INTEGER NOT NULL,
-    submission_link TEXT,
+    site_problem_code VARCHAR(255),
     last_updated_by UUID NOT NULL REFERENCES users(id),
     
     CONSTRAINT fk_problem
         FOREIGN KEY (problem_id) REFERENCES problems(id),
     CONSTRAINT uq_problem_id
         UNIQUE (problem_id),
-    CONSTRAINT uq_submission_link
-        UNIQUE (submission_link)
+    CONSTRAINT uq_site_problem_code
+        UNIQUE (site_problem_code)
 );
 
 -- +goose StatementBegin

@@ -87,7 +87,7 @@ func (p *ProblemService) AddStandardProblem(
 		Notes:              spdRequest.Notes,
 		MemoryLimitKb:      spdRequest.MemoryLimitKB,
 		TimeLimitMs:        spdRequest.TimeLimitMS,
-		SubmissionLink:     spdRequest.SubmissionLink,
+		SiteProblemCode:    spdRequest.SiteProblemCode,
 	})
 	if err != nil {
 		err = flux_errors.HandleDBErrors(

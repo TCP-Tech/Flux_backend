@@ -87,7 +87,7 @@ type Task struct {
 	SchedulingTries int32
 }
 
-func (t Task) String() string {
+func (t *Task) String() string {
 	return fmt.Sprintf(
 		"[TaskID=%s QueueTime=%s LaunchTime=%s State=%v SchedulingTries=%d]",
 		t.TaskID, t.QueueTime, t.LaunchTime, t.State, t.SchedulingTries,

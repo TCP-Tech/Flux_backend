@@ -16,18 +16,18 @@ import (
 	"github.com/tcp_snm/flux/internal/flux_errors"
 )
 
-type contextKey string
+type InternalContextKey string
 
 const (
-	MinUsernameLength               = 5
-	MinPasswordLength               = 10
-	MaxPasswordLength               = 74
-	KeyJWTSecret                    = "JWT_SECRET"
-	KeyUserName                     = "user_name"
-	KeyRollNo                       = "roll_no"
-	KeyExp                          = "exp"
-	KeyIAt                          = "iat"
-	KeyCtxUserCredClaims contextKey = "UserCredClaims"
+	MinUsernameLength                       = 5
+	MinPasswordLength                       = 10
+	MaxPasswordLength                       = 74
+	KeyJWTSecret                            = "JWT_SECRET"
+	KeyUserName                             = "user_name"
+	KeyRollNo                               = "roll_no"
+	KeyExp                                  = "exp"
+	KeyIAt                                  = "iat"
+	KeyCtxUserCredClaims InternalContextKey = "UserCredClaims"
 )
 
 var (
@@ -101,7 +101,7 @@ func AddToWaitQueue(waitElement WaitElement) {
 	priority := time.Now().Add(
 		time.Millisecond * time.Duration(waitElement.DelayMS),
 	).UnixMilli()
-	
+
 	waitQueue.Push(waitElement, int(priority))
 }
 

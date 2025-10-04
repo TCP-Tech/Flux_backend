@@ -1,6 +1,8 @@
 package auth_service
 
 import (
+	"fmt"
+
 	"github.com/tcp_snm/flux/internal/database"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service/user_service"
@@ -47,5 +49,17 @@ type ResetPasswordRequest struct {
 	UserName *string `json:"user_name"`
 	RollNo   *string `json:"roll_no"`
 	Password string  `json:"password"`
-	Token    string  `json:"token"`
+	Token    string  `json:"verification_token"`
+}
+
+func (rpr ResetPasswordRequest) String() string {
+	uns := "<nil>"
+	if rpr.UserName != nil {
+		uns = *rpr.UserName
+	}
+	rns := "<nil>"
+	if rpr.RollNo != nil {
+		rns = *rpr.RollNo
+	}
+	return fmt.Sprintf("user_name=%s, roll_no=%s", uns, rns)
 }
