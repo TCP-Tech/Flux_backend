@@ -442,7 +442,7 @@ func TestHightPriorityTaskKillLowPriorityTask(t *testing.T) {
 			schedulingRetries: 3,
 			finalState:        scheduler_service.StateCompleted,
 			resources: scheduler_service.Resources{
-				CPU:    80,
+				CPU:    150,
 				Memory: 200,
 			},
 		},
@@ -714,7 +714,7 @@ func TestResourceExceedsAvailableSystemResources(t *testing.T) {
 				CmdExecType: scheduler_service.CmdLongRunning,
 			},
 			expectedOutput: "",
-			finalState:     scheduler_service.StateCompleted,
+			finalState:     scheduler_service.StateFailed,
 			errorMessag:    "",
 			priority:       20,
 			resources: scheduler_service.Resources{
