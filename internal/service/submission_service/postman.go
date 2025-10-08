@@ -2,7 +2,6 @@ package submission_service
 
 import (
 	"github.com/sirupsen/logrus"
-	"github.com/tcp_snm/flux/internal/flux_errors"
 )
 
 func (p *postman) start() {
@@ -90,17 +89,15 @@ func (p *postman) handlePostmanMails(pmail mail) {
 // registration alerts from postman and so on. Given a small number of events calling this function
 // and also the low cost of this functions, its better to call this method directly as it ensure to use
 // proper locking mechanism to avoid race conditions.
-func (p *postman) RegisterMailClient(id mailID, client mailClient) error {
+func (p *postman) RegisterMailClient(id mailID, client mailClient) {
 	p.Lock()
 	defer p.Unlock()
 
 	// try to check if client with given mail id exist. if so, return an error
 	if _, ok := p.mailClients[id]; ok {
-		return flux_errors.ErrEntityAlreadyExist
+		p.logger.Warnf("mail client %v already exist but re-register initiated", id)
 	}
 	p.mailClients[id] = client
-
-	return nil
 }
 
 func (p *postman) postMail(mail mail) {

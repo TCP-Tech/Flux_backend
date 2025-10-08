@@ -222,3 +222,27 @@ func getContextWithKeys(
 
 	return ctx, cancel
 }
+
+func dbBotToFluxBot(dbBot database.Bot) (Bot, error) {
+	// unmarhsal cookies
+	var cookies map[string]string
+	err := json.Unmarshal(dbBot.Cookies, &cookies)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot unmarshal cookies of bot %v, %w",
+			// make it invalid so that manager can also understand about the error
+			flux_errors.ErrInvalidRequest,
+			dbBot.Name,
+			err,
+		)
+		logrus.Error(err)
+		return Bot{}, err
+	}
+
+	return Bot{
+		Name:     dbBot.Name,
+		Platform: dbBot.Platform,
+		Cookies:  cookies,
+	}, nil
+
+}

@@ -155,12 +155,7 @@ func (mgr *nyxManager) handleInvalidMailClient(invMail mail) {
 	}
 
 	// register with postman
-	if err := mgr.postman.RegisterMailClient(invMailID, wt); err != nil {
-		mgr.logger.Errorf(
-			"failed to register watcher %v that's reported as invalid by postman but present in inventory",
-			invMailID,
-		)
-	}
+	mgr.postman.RegisterMailClient(invMailID, wt)
 }
 
 func (mgr *nyxManager) handleSubmission(subMail mail) {
@@ -263,15 +258,7 @@ func (mgr *nyxManager) createWatcher(fluxSub fluxSubmission) error {
 	}
 
 	// Register with the postman
-	err := mgr.postman.RegisterMailClient(watcher.mailID, &watcher)
-	if err != nil {
-		err = fmt.Errorf(
-			"%w, failed to register watcher for submission %v with mailID %v: %v",
-			flux_errors.ErrInternal, fluxSub.SubmissionID, watcher.mailID, err,
-		)
-		mgr.logger.Error(err)
-		return err
-	}
+	mgr.postman.RegisterMailClient(watcher.mailID, &watcher)
 
 	// register with manager
 	mgr.watchers[fluxSub.SubmissionID] = &watcher

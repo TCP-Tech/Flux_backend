@@ -18,13 +18,16 @@ import (
 )
 
 func (monitor *cfBotMonitor) start(cfQueryUrl string) {
+	if monitor.mailID == "" {
+		panic("monitor's mailID is empty")
+	}
 	if monitor.botName == "" {
 		panic("monitor's bot name is empty")
 	}
 
 	monitor.logger = logrus.WithFields(
 		logrus.Fields{
-			"from": monitor.botName + "-bot_montior",
+			"from": monitor.mailID,
 		},
 	)
 
@@ -48,77 +51,145 @@ func (monitor *cfBotMonitor) start(cfQueryUrl string) {
 		panic("monitor expects non-nil submission status manager")
 	}
 
-	monitor.subStatMap = make(map[int64]cfSubStatus)
-	monitor.newSubs = make(chan cfSubStatus, 10)
+	if monitor.subStatMap == nil {
+		monitor.subStatMap = make(map[int64]cfSubStatus)
+	}
+	if monitor.mailBox == nil {
+		monitor.mailBox = make(chan mail, 10)
+	}
 
-	go monitor.monitor()
+	monitor.stopDecision = mnrStopDecision{endLife: false, ltsSignal: time.Now()}
 
-	monitor.logger.Infof("monitor %v started successfully", monitor.botName)
+	go monitor.processMails()
+
+	monitor.logger.Infof("monitor %v started successfully", monitor.mailID)
 }
 
-func (monitor *cfBotMonitor) monitor() {
-	// loop
+func (monitor *cfBotMonitor) processMails() {
+	defer func() {
+		monitor.logger.Info("exiting process mails")
+	}()
+
+	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
 	for {
-		// random sleep to avoid infinite cycles
-		time.Sleep(time.Second * 5)
+		select {
+		case ml := <-monitor.mailBox:
+			switch body := ml.body.(type) {
+			case stop:
+				stopTime := time.Time(body)
+				if stopTime.After(monitor.stopDecision.ltsSignal) {
+					monitor.stopDecision.ltsSignal = stopTime
+					monitor.stopDecision.endLife = true
+					monitor.stopDecision.ltsStopDecision = stopTime
+				}
+			case keepAlive:
+				kaTime := time.Time(body)
+				if kaTime.After(monitor.stopDecision.ltsSignal) {
+					monitor.stopDecision.endLife = false
+					monitor.stopDecision.ltsSignal = kaTime
+				}
+			case mnrSubAlert:
+				status := cfSubStatus(body)
+				monitor.logger.Debugf("found new submission alert with id %v", status)
 
-		// empty the new sub alerts
-		monitor.emptyNewSubAlerts()
+				// put the entry into map
+				monitor.subStatMap[status.CfSubID] = status
 
-		// check if there are any running submissions on cf
-		shouldQuery := monitor.shouldQueryCf()
-
-		// found active submissions
-
-		var subStatus []cfSubStatus = make([]cfSubStatus, 0)
-
-		if shouldQuery {
-			monitor.logger.Debugf(
-				"monitor found active submissions. querying %v for their status",
-				platformCodeforces,
-			)
-
-			// get latest submissions
-			subStatus, err := monitor.querySubmissions(1, 100)
-			if err != nil {
-				monitor.logger.Errorf("monitor unable to query for submissions in its loop cycle")
+				// update stop descision regardless of endLife
+				monitor.stopDecision.ltsStopDecision = time.Now()
+			case mnrUpdateStopDecision:
+				tm := time.Time(body)
+				if monitor.stopDecision.endLife {
+					monitor.stopDecision.ltsStopDecision = tm
+				}
+			default:
+				monitor.logger.Errorf("recieved unknown mail %v", ml)
+			}
+		case <-ticker.C:
+			if !monitor.stopDecision.endLife {
+				monitor.monitor()
 				continue
 			}
 
-			// update the submissions
-			subStatusMap := make(map[int64]cfSubStatus, len(subStatus))
-			for _, status := range subStatus {
-				subStatusMap[status.CfSubID] = status
+			expiry := monitor.stopDecision.ltsStopDecision.Add(time.Minute * 5)
+			if time.Now().Before(expiry) {
+				monitor.monitor()
+				continue
 			}
 
-			// update the record
-			monitor.Lock() // lock to prevent race modification of state
-			monitor.subStatMap = subStatusMap
-			monitor.Unlock() // state of monitor is not gonna change any more. so unlock.
-		} else {
-			monitor.Lock()
-			for _, stat := range monitor.subStatMap {
-				subStatus = append(subStatus, stat)
-			}
-			monitor.Unlock()
+			// inform manager that monitor is dead
+			monitor.postman.postMail(mail{
+				from: monitor.mailID,
+				to:   mailNyxBotMgr,
+				body: mnrStopped(monitor.mailID),
+			})
+			monitor.logger.Warnf("monitor stopped")
+			return
+		}
+	}
+}
+
+func (monitor *cfBotMonitor) monitor() {
+	// check if there are any running submissions on cf
+	shouldQuery := monitor.shouldQueryCf()
+	isColdStart := len(monitor.subStatMap) == 0
+
+	var subStatus []cfSubStatus = make([]cfSubStatus, 0)
+
+	if shouldQuery || isColdStart {
+		monitor.logger.Debugf(
+			"querying %v for submissions status",
+			platformCodeforces,
+		)
+
+		// get latest submissions by querying cf
+		var err error
+		subStatus, err = monitor.querySubmissions(1, 50)
+		if err != nil {
+			monitor.logger.Errorf("monitor unable to query for submissions in its loop cycle")
+			return
 		}
 
-		// update results into db
-		monitor.updateEntriesIntoDB(subStatus)
+		// update the submissions
+		subStatusMap := make(map[int64]cfSubStatus, len(subStatus))
+		for _, status := range subStatus {
+			subStatusMap[status.CfSubID] = status
+		}
+
+		// update the record
+		monitor.subStatMap = subStatusMap
+	} else {
+		for _, stat := range monitor.subStatMap {
+			subStatus = append(subStatus, stat)
+		}
+	}
+
+	// update results into db
+	updateStopDecision := monitor.updateEntriesIntoDB(subStatus)
+
+	if updateStopDecision {
+		// inform itself to update
+		monitor.postman.postMail(mail{
+			from: monitor.mailID,
+			to:   monitor.mailID,
+			body: mnrUpdateStopDecision(time.Now()),
+		})
+
+		monitor.logger.Debugf("asked to update my stop decision")
 	}
 }
 
 // TimeComplexity: O(nlogn) for sorting submissions and
 // 2 db calls for updating submissions table and cf_submissions table
-func (monitor *cfBotMonitor) updateEntriesIntoDB(httpEntries []cfSubStatus) {
+func (monitor *cfBotMonitor) updateEntriesIntoDB(httpEntries []cfSubStatus) bool {
 	// create a context for the whole update
 	updateCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	// cancel always at the end to release resources. its reentrant meaning, it can be safely called multiple times
 	defer cancel()
 
 	// sort the slice with the cf_sub_id id
-	statCmpr := func(i, j int) bool { return httpEntries[i].CfSubID < httpEntries[j].CfSubID }
-	sort.Slice(httpEntries, statCmpr)
+	sort.Slice(httpEntries, func(i, j int) bool { return httpEntries[i].CfSubID < httpEntries[j].CfSubID })
 
 	// collect all the ids into a slice
 	ids := make([]int64, 0)
@@ -127,14 +198,14 @@ func (monitor *cfBotMonitor) updateEntriesIntoDB(httpEntries []cfSubStatus) {
 	}
 
 	// get the dbEntries from db
-	dbEntries, err := monitor.getBulkEntries(updateCtx, ids)
+	dbEntries, err := monitor.getBulkEntries(updateCtx)
 	if err != nil {
 		monitor.logger.Error("cannot update cf submissions into db. failed to get bulk entries")
-		return
+		return true
 	}
 
 	// sort the entries as well
-	sort.Slice(dbEntries, statCmpr)
+	sort.Slice(dbEntries, func(i, j int) bool { return dbEntries[i].status.CfSubID < dbEntries[j].status.CfSubID })
 
 	cfIDs := make([]int64, 0, len(httpEntries))
 	subIDs := make([]uuid.UUID, 0, len(httpEntries))
@@ -173,8 +244,7 @@ func (monitor *cfBotMonitor) updateEntriesIntoDB(httpEntries []cfSubStatus) {
 
 	// check for trivial updates
 	if len(cfIDs) == 0 {
-		monitor.logger.Debug("no submissions to update entries into db in current cycle")
-		return
+		return false
 	}
 
 	// check which submissions are not latest and update them selectively
@@ -182,7 +252,7 @@ func (monitor *cfBotMonitor) updateEntriesIntoDB(httpEntries []cfSubStatus) {
 	tx, err := service.GetNewTransaction(updateCtx)
 	if err != nil {
 		monitor.logger.Error("failed to get new transaction to update cf submissions into db. aborting update")
-		return
+		return true
 	}
 	defer tx.Rollback(updateCtx)
 
@@ -192,7 +262,7 @@ func (monitor *cfBotMonitor) updateEntriesIntoDB(httpEntries []cfSubStatus) {
 	// update submissions
 	if err = monitor.subStatMgr.bulkUpdateSubmissionState(updateCtx, qtx, subIDs, states); err != nil {
 		monitor.logger.Error("encountered error from db while updating submissions table in current cycle")
-		return
+		return true
 	}
 
 	// update cf_submissions
@@ -207,17 +277,19 @@ func (monitor *cfBotMonitor) updateEntriesIntoDB(httpEntries []cfSubStatus) {
 			"failed to update cf_submissions table while updating submission entries into db",
 		)
 		monitor.logger.Error("encountered error from db while updating cf_submissions table in current cycle")
-		return
+		return true
 	}
 
 	// commit the transaction
 	if err := tx.Commit(updateCtx); err != nil {
 		monitor.logger.Error("failed to commit transaction after updating submissions in db")
-		return
+		return true
 	}
+
+	return true
 }
 
-func (monitor *cfBotMonitor) getBulkEntries(ctx context.Context, ids []int64) ([]cfSubResult, error) {
+func (monitor *cfBotMonitor) getBulkEntries(ctx context.Context) ([]cfSubResult, error) {
 	entries, err := monitor.DB.GetBulkCfSubmission(ctx, cfSinkStates)
 	if err != nil {
 		err = flux_errors.HandleDBErrors(
@@ -243,25 +315,6 @@ func (monitor *cfBotMonitor) getBulkEntries(ctx context.Context, ids []int64) ([
 	return res, nil
 }
 
-func (monitor *cfBotMonitor) emptyNewSubAlerts() {
-	monitor.Lock()
-	defer monitor.Unlock()
-
-	for {
-		select {
-		case newSub := <-monitor.newSubs:
-			monitor.logger.Debugf("found new submission alert with id %v", newSub.CfSubID)
-			monitor.subStatMap[newSub.CfSubID] = newSub
-		default:
-			return
-		}
-	}
-}
-
-func (monitor *cfBotMonitor) newSubAlert(sub cfSubStatus) {
-	monitor.newSubs <- sub
-}
-
 func (monitor *cfBotMonitor) querySubmissions(
 	subOffset int32, // 1 based offset (eg., if you want the latest submission, set this as 1)
 	subCount int32,
@@ -275,7 +328,7 @@ func (monitor *cfBotMonitor) querySubmissions(
 	baseUrlCopy.RawQuery = urlParams.Encode()
 
 	// create a context to avoid indefinite wait
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// get a new request with the context
@@ -338,32 +391,18 @@ func (monitor *cfBotMonitor) querySubmissions(
 		return nil, err
 	}
 
+	// sometimes cf can report empty verdict. Although its considered as non-sink-cf-state,
+	// replace it with TESTING for clarity
+	for _, stat := range resJson.Result {
+		if stat.Verdict == "" {
+			stat.Verdict = "TESTING"
+		}
+	}
+
 	return resJson.Result, nil
 }
 
-func (monitor *cfBotMonitor) getLatestSubmission(prevSub int64) (cfSubStatus, error) {
-	// get the max submission id currently
-	var maxSubID int64 = 0
-	var status cfSubStatus
-
-	monitor.Lock()
-	for k, v := range monitor.subStatMap {
-		if k > maxSubID {
-			maxSubID = k
-			status = v
-		}
-	}
-	monitor.Unlock()
-
-	if maxSubID > 0 && prevSub < maxSubID {
-		return status, nil
-	}
-
-	monitor.logger.Debugf(
-		"previous submission id %v is same as max submission id, querying cf",
-		prevSub,
-	)
-
+func (monitor *cfBotMonitor) getLatestSubmission() (cfSubStatus, error) {
 	// query for latest submission
 	latestSubs, err := monitor.querySubmissions(1, 1)
 	if err != nil {
@@ -386,16 +425,17 @@ func (monitor *cfBotMonitor) getLatestSubmission(prevSub int64) (cfSubStatus, er
 	// then shouldPerformCycle of botMonitor will return false always once everything settles.
 	// There is no way for monitor to know about submission without querying. So, this helps in lazy
 	// querying to avoid unnecessary network calls.
-	monitor.logger.Debugf("alerted monitor %v about new submission %v", monitor.botName, latestSub.CfSubID)
-	go monitor.newSubAlert(latestSub)
+	monitor.postman.postMail(mail{
+		from: monitor.mailID,
+		to:   monitor.mailID,
+		body: mnrSubAlert(latestSub),
+	})
+	monitor.logger.Debugf("alerted myself about new submission %v", latestSub.CfSubID)
 
 	return latestSub, nil
 }
 
 func (monitor *cfBotMonitor) shouldQueryCf() bool {
-	monitor.Lock()
-	defer monitor.Unlock()
-
 	for _, status := range monitor.subStatMap {
 		if !isCfSubSinkState(status.Verdict) {
 			return true
@@ -403,4 +443,12 @@ func (monitor *cfBotMonitor) shouldQueryCf() bool {
 	}
 
 	return false
+}
+
+func (monitor *cfBotMonitor) recieveMail(ml mail) {
+	monitor.mailBox <- ml
+}
+
+func (monitor *cfBotMonitor) getMailID() mailID {
+	return monitor.mailID
 }

@@ -39,6 +39,7 @@ const (
 	prNyxMstSlvBotErr
 	prNyxMstSlvDead
 	prNyxMstScrDead
+	prNyxMstRefreshBots
 )
 
 const (
@@ -111,7 +112,6 @@ type nyxSlave struct {
 	mailBox       *PriorityQueue[mail]
 	botMgr        *nyxBotMgr
 	logger        *logrus.Entry
-	botventory    *nyxBotventory
 }
 
 type subT struct {
@@ -157,6 +157,11 @@ type NyxScrStrtCmd struct {
 	ExtraArgs []string
 }
 
+type nyxSlaveContainer struct {
+	*nyxSlave
+	numActSubs int32
+}
+
 type nyxMaster struct {
 	logger            *logrus.Entry
 	postman           *postman
@@ -165,20 +170,19 @@ type nyxMaster struct {
 	scheduler         *scheduler_service.Scheduler // used for scheduling slaves
 	botMgr            *nyxBotMgr
 	mailBox           *PriorityQueue[mail]
-	slaves            []*nyxSlave             // since slaves are 5-10 in number, slice is convinient to use
-	lastUsedSlave     int                     // helps in using slaves in round-robin manner
+	slaves            []*nyxSlaveContainer    // since slaves are 5-10 in number, slice is convinient to use
 	activeSubmissions map[uuid.UUID]nyxActSub // submissionID -> nyxWatcher
 	pendingSlaves     map[uuid.UUID]pendingSlave
-	botventory        *nyxBotventory
+	db                *database.Queries
 	// used to keep track of slaves that have been scheduled to kill
-	killedSlaves []*nyxSlave
+	killedSlaves []*nyxSlaveContainer
 }
 
 // used by the master to keep track of all active submission requests from the watcher
 type nyxActSub struct {
 	from         mailID
 	submissionID uuid.UUID
-	slaveID      uuid.UUID
+	slaveID      mailID
 }
 
 type nyxWatcher struct {
@@ -224,29 +228,50 @@ func (stat *cfSubStatus) equal(other cfSubStatus) bool {
 		stat.MemoryConsumedBytes == other.MemoryConsumedBytes && stat.PassedTestCount == other.PassedTestCount
 }
 
+type mnrStopDecision struct {
+	endLife         bool
+	ltsSignal       time.Time
+	ltsStopDecision time.Time
+}
+
+type mnrSubAlert cfSubStatus
+
+type mnrStopped string
+
+type mnrUpdateStopDecision time.Time
+
 // this is responsible for querying all the submission status made using the bot
 // being monitored by this component. One monitor can only monitor one bot. If there are
 // any changes from previous query from cf, it will then update those changes into db.
 type cfBotMonitor struct {
-	sync.Mutex
-	botName    string // this is also the mailID of the monitor
-	newSubs    chan cfSubStatus
-	subStatMap map[int64]cfSubStatus
-	cfQueryUrl *url.URL
-	postman    *postman
-	DB         *database.Queries // used for updating
-	logger     *logrus.Entry
-	subStatMgr subStatManager
+	botName      string
+	mailID       mailID // this is also the mailID of the monitor
+	mailBox      chan mail
+	subStatMap   map[int64]cfSubStatus
+	cfQueryUrl   *url.URL
+	postman      *postman
+	DB           *database.Queries // used for updating
+	logger       *logrus.Entry
+	subStatMgr   subStatManager
+	stopDecision mnrStopDecision
 }
 
 // manages multiple bot monitors
 type nyxBotMgr struct {
-	monitors   map[string]*cfBotMonitor // botName -> monitor
-	cfQueryUrl string
-	DB         *database.Queries
-	postman    *postman
-	logger     *logrus.Entry
-	subStatMgr subStatManager
+	sync.Mutex
+	monitors     map[string]*cfBotMonitor // botName -> monitor
+	mailBox      chan mail
+	cfQueryUrl   string
+	DB           *database.Queries
+	postman      *postman
+	logger       *logrus.Entry
+	subStatMgr   subStatManager
+	distribution map[uuid.UUID]nyxSlaveDist
+}
+
+type mgrRefreshBots struct {
+	bots   []Bot
+	slaves []slaveInfo
 }
 
 // used by load manager to report master about recent load statistics
@@ -275,20 +300,10 @@ type slaveInfo struct {
 }
 
 // used by nyxBotventory for keeping track of slaves and their bots
-type nyxSlaventory struct {
+type nyxSlaveDist struct {
 	slaveInfo
 	bots        []Bot
 	lastUsedBot int
-}
-
-// if the same bot is used by two different slaves then, we cannot
-// map cf site submission id to flux submission id. Also, master must
-// allocate bots fairly to each slave without changing their internal state directly.
-// So this mutex component is used as a common memory between master and slaves
-type nyxBotventory struct {
-	sync.Mutex
-	logger    *logrus.Entry
-	inventory map[uuid.UUID]nyxSlaventory
 }
 
 // if a slave is not able to get a bot, it wraps the error into this and reports to master
@@ -302,3 +317,5 @@ type watcherFailed struct {
 	recoveredError any
 	submissionID   uuid.UUID
 }
+
+type refreshBots struct{}

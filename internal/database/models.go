@@ -56,12 +56,11 @@ func (ns NullLockType) Value() (driver.Value, error) {
 }
 
 type Bot struct {
-	ID          uuid.UUID        `json:"id"`
-	AccountName string           `json:"account_name"`
-	Platform    string           `json:"platform"`
-	WebsiteData *json.RawMessage `json:"website_data"`
-	CreatedAt   time.Time        `json:"created_at"`
-	UpdatedAt   time.Time        `json:"updated_at"`
+	Name      string          `json:"name"`
+	Platform  string          `json:"platform"`
+	Cookies   json.RawMessage `json:"cookies"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 type CfSubmission struct {

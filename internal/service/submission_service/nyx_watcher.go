@@ -287,6 +287,7 @@ func (wt *nyxWatcher) handleSubResult(resMail mail) bool {
 			"unique error occurred while inserting cf submission (%v) into db: %v. ending watch assuming its a duplicate entry",
 			res.status, err,
 		)
+		return true
 	}
 
 	// update submission state

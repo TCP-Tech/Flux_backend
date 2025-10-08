@@ -66,6 +66,10 @@ func NewV1Router() *chi.Mux {
 	// update
 	v1.Put("/tournaments/contests", middleware.JWTMiddleware(apiConfig.HandlerChangeTournamentContest))
 
+	// bots
+	v1.Post("/bots", middleware.JWTMiddleware(apiConfig.AddBot))
+	v1.Get("/bots/refresh", middleware.JWTMiddleware(apiConfig.RefreshBots))
+
 	// submit
 	v1.Post("/submit", middleware.JWTMiddleware(apiConfig.HandlerSubmit))
 	return v1

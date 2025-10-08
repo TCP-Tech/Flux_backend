@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -35,14 +36,14 @@ func (master *nyxMaster) Start(
 	if master.scrStCmd.Name == "" {
 		panic("script start command should not be blank")
 	}
-	if len(master.bots) == 0 {
-		panic("non-0 number of bots must be passed to initialize nyx master")
-	}
 	if master.scheduler == nil {
 		panic("master expects non-nil scheduler")
 	}
 	if subStatMgr == nil {
-		panic("master expectx non-nil submission status manager")
+		panic("master expects non-nil submission status manager")
+	}
+	if master.db == nil {
+		panic("master expects non-nil db")
 	}
 
 	// setup load manager
@@ -60,19 +61,18 @@ func (master *nyxMaster) Start(
 		postman:    master.postman,
 		subStatMgr: subStatMgr,
 	}
-	mgr.start(master.bots)
+	mgr.start()
 	master.botMgr = &mgr
-
-	// setup botventory
-	master.botventory = &nyxBotventory{}
-	master.botventory.start()
+	// register mgr with postman
+	mgr.postman.RegisterMailClient(mailNyxBotMgr, &mgr)
 
 	master.mailBox = (NewPriorityQueue[mail](lane.MAXPQ))
-	master.slaves = make([]*nyxSlave, 0)
-	master.lastUsedSlave = -1 // to represent that we haven't used any slave yet
+	master.slaves = make([]*nyxSlaveContainer, 0)
 	master.activeSubmissions = make(map[uuid.UUID]nyxActSub)
 	master.pendingSlaves = make(map[uuid.UUID]pendingSlave)
-	master.killedSlaves = make([]*nyxSlave, 0)
+	master.killedSlaves = make([]*nyxSlaveContainer, 0)
+
+	master.refreshBots()
 
 	if err := master.startSlave(80); err != nil {
 		panic(err)
@@ -107,12 +107,80 @@ func (master *nyxMaster) processMails() {
 		case slaveBotError:
 			master.handleSlaveBotError(topMail)
 		case invalidMailClient:
-
-		case slaveFailed:
+			master.handleInvalidClient(topMail)
+		case refreshBots:
+			master.refreshBots()
+		case slaveFailed: // keep this case at last as its type is any and everything will get matched by this
 			master.handleFailedSlave(topMail)
+		default:
+			master.logger.Errorf("ignoring invalid mail %v", topMail)
 		}
-
 	}
+}
+
+// get bots from db, update self and ask manager to refresh bots
+func (master *nyxMaster) refreshBots() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	// get bots from db
+	dbBots, err := master.db.GetBots(ctx)
+	if err != nil {
+		flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf("master cannot get bots from db. failed to refresh bots"),
+		)
+		return
+	}
+
+	// convert db bots to flux bots
+	bots := make([]Bot, 0, len(dbBots))
+	for _, dbBot := range dbBots {
+		fluxBot, err := dbBotToFluxBot(dbBot)
+		if err != nil {
+			master.logger.Errorf(
+				"failed to convert dbBot %v to flux bot. failed to refresh bots",
+				dbBot.Name,
+			)
+			return
+		}
+		bots = append(bots, fluxBot)
+	}
+
+	master.bots = bots
+	master.informManagerToRefreshBots()
+
+	master.logger.Infof("asked bot manager to refresh bots")
+}
+
+// check if the mail is of any existing slave. if yes reregister it with postman else ignore
+func (master *nyxMaster) handleInvalidClient(ml mail) {
+	invMailID := mailID(ml.body.(invalidMailClient))
+
+	var slave *nyxSlaveContainer
+	for _, slv := range master.slaves {
+		if slv.mailID == invMailID {
+			slave = slv
+			break
+		}
+	}
+
+	if slave == nil {
+		master.logger.Warnf(
+			"client with mail id %v is reported as invalid by postman and no corresponding slave is present with that mail id as well",
+			invMailID,
+		)
+		return
+	}
+
+	master.logger.Warnf(
+		"client with mail id %v is reported as invalid by postman but a slave is present with that id",
+	)
+
+	master.postman.RegisterMailClient(slave.mailID, slave)
+
+	master.logger.Infof("registered slave %v with postman", invMailID)
 }
 
 func (master *nyxMaster) handleSlaveBotError(botMail mail) {
@@ -122,10 +190,10 @@ func (master *nyxMaster) handleSlaveBotError(botMail mail) {
 		slv := master.getSlaveByMailID(botMail.from)
 		if slv != nil {
 			master.logger.Warnf(
-				"slave %v is in master's inventory but not in botventory. redistributing bots",
+				"slave %v is in master's inventory but not with bot manager. redistributing bots",
 				botMail.from,
 			)
-			master.botventory.redistributeBots(master.bots, master.getSlavesInfo())
+			master.informManagerToRefreshBots()
 			return
 		}
 
@@ -148,15 +216,19 @@ func (master *nyxMaster) handleSlaveBotError(botMail mail) {
 				"more bots than slaves but slave %v has no bots assigned. redistributing bots",
 				botMail.from,
 			)
-			master.botventory.redistributeBots(master.bots, master.getSlavesInfo())
+			master.informManagerToRefreshBots()
 			return
 		}
 		master.logger.Warnf(
 			"more slaves than bots. killing %v slaves and redistributing bots",
 			len(master.slaves)-len(master.bots),
 		)
+		if len(master.slaves) == 1 {
+			master.logger.Warnf("only 1 slave is left but 0 bots are left. cannot kill slave")
+			return
+		}
 		master.killLeastRecentlyUsedSlaves(len(master.slaves) - len(master.bots))
-		master.botventory.redistributeBots(master.bots, master.getSlavesInfo())
+		master.informManagerToRefreshBots()
 		return
 	}
 
@@ -196,7 +268,7 @@ func (master *nyxMaster) handleCfSubRequest(reqMail mail) {
 		//    but in rare unknown cases (when there is an unknown bug exist) it might go unreported
 		slaveExist := master.slaveExist(actSub.slaveID)
 		if slaveExist {
-			master.logger.Warnf(
+			master.logger.Debugf(
 				"ignoring duplicate request for submission with id %v",
 				shortSubID,
 			)
@@ -238,16 +310,20 @@ func (master *nyxMaster) handleCfSubRequest(reqMail mail) {
 		return
 	}
 
-	// slaves are used in round robin manner
-	nextSlaveIdx := (master.lastUsedSlave + 1) % len(master.slaves)
-	nextSlave := master.slaves[nextSlaveIdx]
-	master.lastUsedSlave = nextSlaveIdx
+	// slave with least number of subs is assigned the request
+	nextSlave := master.slaves[0]
+	for _, slv := range master.slaves {
+		if slv.numActSubs < nextSlave.numActSubs {
+			nextSlave = slv
+		}
+	}
+	nextSlave.numActSubs++
 
 	// create an active sub entry
 	actSub = nyxActSub{
 		from:         reqMail.from,
 		submissionID: body.submissionID,
-		slaveID:      nextSlave.taskID,
+		slaveID:      nextSlave.mailID,
 	}
 	master.activeSubmissions[body.submissionID] = actSub
 	master.logger.Debugf(
@@ -275,6 +351,9 @@ func (master *nyxMaster) handleCfSubResult(res mail) {
 	// cast body
 	body := res.body.(cfSubResult)
 
+	// used for logging
+	shortSubID := getShortUUID(body.submissionID, 5)
+
 	// get the active submission entry
 	actSub, ok := master.activeSubmissions[body.submissionID]
 	if !ok {
@@ -301,11 +380,22 @@ func (master *nyxMaster) handleCfSubResult(res mail) {
 	})
 	master.logger.Debugf(
 		"request %v was processed by slave. informed watcher",
-		getShortUUID(body.submissionID, 5),
+		shortSubID,
 	)
 
 	// delete its entry
 	delete(master.activeSubmissions, actSub.submissionID)
+
+	// reduce the act subs on slave
+	slave := master.getSlaveByMailID(actSub.slaveID)
+	if slave == nil {
+		master.logger.Warnf(
+			"submission %v is processed by slave with task id %v but not present in inventory",
+			shortSubID, getShortUUID(slave.taskID, 5),
+		)
+		return
+	}
+	slave.numActSubs--
 }
 
 func (master *nyxMaster) handleSlvTaskLaunch(ml mail) {
@@ -474,33 +564,23 @@ func (master *nyxMaster) handleSlaveReady(ml mail) {
 		mailID:        slMailId,
 		scriptAddress: ready.add,
 		botMgr:        master.botMgr,
-		botventory:    master.botventory,
 	}
+	cont := nyxSlaveContainer{nyxSlave: &newSlave, numActSubs: 0}
 
 	// register with postman
-	if err := master.postman.RegisterMailClient(slMailId, &newSlave); err != nil {
-		master.logger.Errorf(
-			"postman failed to register slave %v. killing slave's script",
-			slMailId,
-		)
-		// if the scheduler fails to kill the task, there is nothing we can do with the error,
-		// as this error occur very rarely. If it does, then we need to reconsider our whole design
-		if err = master.scheduler.KillTask(newSlave.taskID); err != nil {
-			master.logger.Errorf("scheduler failed to kill slave %v", slMailId)
-		}
-		return
-	}
+	master.postman.RegisterMailClient(slMailId, &cont)
 
 	newSlave.start()
 
-	master.slaves = append(master.slaves, &newSlave)
+	master.slaves = append(master.slaves, &cont)
 	master.logger.Infof("new slave (%v) has been added to inventory", newSlave.mailID)
 
 	// remove pending slave
 	delete(master.pendingSlaves, newSlave.taskID)
 
 	// redistribute bots
-	master.botventory.redistributeBots(master.bots, master.getSlavesInfo())
+	master.informManagerToRefreshBots()
+	master.logger.Infof("initiated bot refreshment after slave %v is ready", newSlave.mailID)
 }
 
 func (master *nyxMaster) handleDeadSlave(ml mail) {
@@ -508,7 +588,7 @@ func (master *nyxMaster) handleDeadSlave(ml mail) {
 	deadSlaveInfo := ml.body.(slvScrDead)
 
 	// get the slave
-	var deadSlave *nyxSlave
+	var deadSlave *nyxSlaveContainer
 	for _, slv := range master.slaves {
 		if slv.taskID == deadSlaveInfo.taskID {
 			deadSlave = slv
@@ -517,7 +597,7 @@ func (master *nyxMaster) handleDeadSlave(ml mail) {
 	}
 	// check once in killed slaves
 	if deadSlave == nil {
-		killedSlaves := make([]*nyxSlave, 0)
+		killedSlaves := make([]*nyxSlaveContainer, 0)
 		for _, killedSlave := range master.killedSlaves {
 			if deadSlaveInfo.taskID == killedSlave.taskID {
 				deadSlave = killedSlave
@@ -575,7 +655,7 @@ func (master *nyxMaster) handleDeadSlave(ml mail) {
 	master.deleteSlaveFiles(deadSlave.sockAddFile, deadSlave.sockLock.Path())
 
 	// delete slave
-	newSlaves := make([]*nyxSlave, 0, len(master.slaves)-1)
+	newSlaves := make([]*nyxSlaveContainer, 0)
 	for _, slvCont := range master.slaves {
 		if slvCont.taskID == deadSlave.taskID {
 			continue
@@ -585,8 +665,16 @@ func (master *nyxMaster) handleDeadSlave(ml mail) {
 	master.slaves = newSlaves
 
 	// redistribute bots
-	master.logger.Infof("redistributing bots after handling dead slave with id %v", deadSlave.taskID)
-	master.botventory.redistributeBots(master.bots, master.getSlavesInfo())
+	master.informManagerToRefreshBots()
+	master.logger.Infof("initiated bot refreshment after handling dead slave with id %v", deadSlave.taskID)
+}
+
+func (master *nyxMaster) informManagerToRefreshBots() {
+	master.postman.postMail(mail{
+		from: mailNyxMaster,
+		to:   mailNyxBotMgr,
+		body: mgrRefreshBots{bots: master.bots, slaves: master.getSlavesInfo()},
+	})
 }
 
 func (master *nyxMaster) getSlavesInfo() []slaveInfo {
@@ -631,10 +719,14 @@ func (master *nyxMaster) handleLoadReport(loadMail mail) {
 
 	// calculate recommended number of slaves for smooth submissions
 	// calculate biased ceil ie., if recommended slaves >= x.4 then we will conisder it as x+1 slaves
+	master.logger.Debugf("master is processing load report: %v", report)
 	recSlaves := int(0.6 + report.avgLoad*report.avgSubT.Minutes())
 
 	// if requests are too high, then max number of slaves will be ceil(num_bots)/2
+	// we allow capSlaves minimum to be 0 because if it minimum is 1 then we would never go down from 2 to 1
+	// as we ignore the recommendation of killing just 1 slave
 	capSlaves := min((len(master.bots)+1)/2, recSlaves)
+	master.logger.Debugf("current capped recommendation of slaves: %v", capSlaves)
 
 	// case where we should launch more slaves. we should have atleast 1 slave up at all times
 	totalSlaves := len(master.slaves) + len(master.pendingSlaves)
@@ -673,7 +765,7 @@ func (master *nyxMaster) handleLoadReport(loadMail mail) {
 		)
 
 		// we kill least recently used slaves
-		master.killLeastRecentlyUsedSlaves(len(master.slaves) - capSlaves)
+		master.killLeastRecentlyUsedSlaves(len(master.slaves) - minSlaves)
 	}
 
 }
@@ -687,10 +779,12 @@ func (master *nyxMaster) killLeastRecentlyUsedSlaves(num int) {
 		num = len(master.slaves)
 	}
 
+	slavesClone := slices.Clone(master.slaves)
+	sort.Slice(slavesClone, func(i, j int) bool { return slavesClone[i].numActSubs < slavesClone[j].numActSubs })
+
 	omittedSlaves := make([]mailID, 0)
-	for i := 1; i <= num; i++ {
-		slaveIdx := (master.lastUsedSlave + i) % len(master.slaves)
-		slave := master.slaves[slaveIdx]
+	for i := 0; i < num; i++ {
+		slave := slavesClone[i]
 
 		// send a stop signal to the slave
 		master.postman.postMail(mail{
@@ -757,7 +851,7 @@ func (master *nyxMaster) omitSlaves(slaveIDs ...mailID) {
 		omitSet[id] = struct{}{}
 	}
 
-	finalSlaves := make([]*nyxSlave, 0, len(master.slaves))
+	finalSlaves := make([]*nyxSlaveContainer, 0, len(master.slaves))
 	for _, slv := range master.slaves {
 		if _, found := omitSet[slv.mailID]; found {
 			// This is a slave to be killed, move it to the killedSlaves list
@@ -775,9 +869,9 @@ func (master *nyxMaster) recieveMail(mail mail) {
 	master.mailBox.Add(mail)
 }
 
-func (master *nyxMaster) slaveExist(slaveID uuid.UUID) bool {
+func (master *nyxMaster) slaveExist(slaveID mailID) bool {
 	for _, slave := range master.slaves {
-		if slave.taskID == slaveID {
+		if slave.mailID == slaveID {
 			return true
 		}
 	}
@@ -837,7 +931,7 @@ func (master *nyxMaster) startSlave(priority int32) error {
 	return nil
 }
 
-func (master *nyxMaster) getSlaveByMailID(id mailID) *nyxSlave {
+func (master *nyxMaster) getSlaveByMailID(id mailID) *nyxSlaveContainer {
 	for _, slv := range master.slaves {
 		if slv.mailID == id {
 			return slv
