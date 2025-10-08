@@ -84,7 +84,7 @@ func (slave *nyxSlave) processMails() {
 		switch body := topMail.body.(type) {
 		case cfSubRequest:
 			// get a bot from botventory
-			bot, err := slave.botventory.getBot(slave.taskID)
+			bot, err := slave.botMgr.getBot(slave.taskID)
 			if err != nil {
 				slave.logger.Errorf(
 					"slave failed to get a bot. aborting submission %v",
@@ -292,7 +292,7 @@ func (slave *nyxSlave) submitCfSolution(
 	defer conn.Close()
 
 	// get previous submission for the bot
-	prevSub, err := slave.botMgr.getLatestBotSubmission(bot.Name, -1)
+	prevSub, err := slave.botMgr.getLatestBotSubmission(bot.Name)
 	if err != nil {
 		subLogger.Error("cannot submit solution. failed to get latest submission of bot")
 		return cfSubStatus{}, err
@@ -344,7 +344,7 @@ func (slave *nyxSlave) submitCfSolution(
 	// successful. So, attempt multiple tries to get the latest submission
 	var curSub cfSubStatus
 	for i := 3; i > 0; i-- {
-		curSub, err = slave.botMgr.getLatestBotSubmission(bot.Name, prevSub.CfSubID)
+		curSub, err = slave.botMgr.getLatestBotSubmission(bot.Name)
 		if err != nil {
 			subLogger.Errorf("failed to get latest submission status of bot. retrying %v more times", i-1)
 			continue

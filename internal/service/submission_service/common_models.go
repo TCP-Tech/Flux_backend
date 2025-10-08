@@ -12,6 +12,7 @@ import (
 	"github.com/tcp_snm/flux/internal/service"
 	"github.com/tcp_snm/flux/internal/service/contest_service"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
+	"github.com/tcp_snm/flux/internal/service/user_service"
 )
 
 var (
@@ -58,8 +59,10 @@ type SubmissionService struct {
 	DB             *database.Queries
 	ProblemService *problem_service.ProblemService
 	ContestService *contest_service.ContestService
+	UserService    *user_service.UserService
 	Postman        *postman
 	EvaluatorMails map[string]Evaluator
+	logger         *logrus.Entry
 }
 
 type SubmissionRequest struct {
@@ -131,7 +134,9 @@ type fluxSubmission struct {
 }
 
 // used as a generic sentinel signal to signal components to stop
-type stop struct{}
+type stop time.Time
+
+type keepAlive time.Time
 
 // used as a generic sentinel signal to signam components to initiate a submission
 type submit struct{}

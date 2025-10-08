@@ -49,7 +49,7 @@ def main(debug: bool, file, cf_submit_url):
         logger.setLevel(logging.DEBUG)
     
     logger.info('initilaizing browser Driver')
-    with SB(uc=True, page_load_strategy="none", sjw=True, headed=True) as sb:
+    with SB(uc=True, page_load_strategy="none", sjw=True, headed=True, incognito=True) as sb:
         logger.info('starting server')
         sb.maximize_window() # might be problematic when using with xvfb
         serve(sb, file, cf_submit_url)
@@ -83,6 +83,8 @@ def serve(sb: BaseCase, file: str, cf_submit_url: str):
                 # 2. Serialize and send the response (now inside the try block)
                 res_bytes = json.dumps(response).encode('utf-8')
                 client.sendall(res_bytes)
+
+                sb.reconnect(2)
             except Exception as e:
                 logger.error(f"An error occurred while processing request from {addr}: {e}")
                 response = {

@@ -16,6 +16,7 @@ func (mnr *nyxLdMnr) start() {
 			"from": mailNyxLdMnr,
 		},
 	)
+	mnr.subTChan = make(chan subTAlert, 10)
 
 	if mnr.postman == nil {
 		panic("nyx load manager expects non-nil postman")
@@ -172,8 +173,4 @@ func (mnr *nyxLdMnr) reportLoad() {
 			},
 		)
 	}
-}
-
-func (mnr *nyxLdMnr) RecieveMail(ml mail) {
-	mnr.mailBox <- ml
 }

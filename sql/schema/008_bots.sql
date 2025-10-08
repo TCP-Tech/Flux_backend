@@ -1,10 +1,9 @@
 -- +goose up
 -- Bots Table
 CREATE TABLE bots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    account_name VARCHAR(255) NOT NULL, -- The username or ID of the bot on the external platform
+    name VARCHAR(255) PRIMARY KEY NOT NULL, -- The username or ID of the bot on the external platform
     platform VARCHAR(255) NOT NULL, -- The name of the external platform (e.g., 'codeforces')
-    website_data JSONB, -- Stores platform-specific data like API keys, session cookies, etc.
+    cookies JSONB NOT NULL, -- Stores platform-specific data like API keys, session cookies, etc.
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

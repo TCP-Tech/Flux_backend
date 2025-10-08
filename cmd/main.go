@@ -147,6 +147,7 @@ func initServices(db *database.Queries) *api.Api {
 		DB:             db,
 		ProblemService: ps,
 		ContestService: cs,
+		UserService:    us,
 	}
 	ss.Start(
 		submission_service.NyxScrStrtCmd{
