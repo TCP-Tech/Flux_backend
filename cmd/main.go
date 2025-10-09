@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -143,6 +144,13 @@ func initServices(db *database.Queries) *api.Api {
 	scheduler.Start()
 	log.Info("initialized scheduler")
 
+	// email service
+	emailService := email.EmailService{
+		DB: db,
+	}
+	emailService.Start()
+	logrus.Info("email service started")
+
 	ss := submission_service.SubmissionService{
 		DB:             db,
 		ProblemService: ps,
@@ -158,8 +166,11 @@ func initServices(db *database.Queries) *api.Api {
 		// TODO: change this
 		10,
 		&scheduler,
+		&emailService,
 	)
 	log.Info("initialized scheduler service")
+
+	
 
 	a := api.Api{
 		AuthServiceConfig:       as,

@@ -49,7 +49,7 @@ def main(debug: bool, file, cf_submit_url):
         logger.setLevel(logging.DEBUG)
     
     logger.info('initilaizing browser Driver')
-    with SB(uc=True, page_load_strategy="none", sjw=True, headed=True, incognito=True) as sb:
+    with SB(uc=True, page_load_strategy="none", sjw=True, headed=True) as sb:
         logger.info('starting server')
         sb.maximize_window() # might be problematic when using with xvfb
         serve(sb, file, cf_submit_url)
@@ -137,9 +137,14 @@ def process_requests(client: socket.socket, sb:BaseCase, cf_submit_url: str) -> 
         if req_model.req_type == "submit":
             # The request is already fully validated by Pydantic
             logger.debug('Processing the submission request')
-            process_cf_requests(req_model.solution, sb, cf_submit_url)
-            return {'status': 'ok'}
-
+            cookies = process_cf_requests(req_model.solution, sb, cf_submit_url)
+            return {'status': 'ok', 'cookies': cookies}
+    except BotNotWorkingException as e:
+        logger.error(f'Submission failed due to bot {req_model.solution.bot_name} not working')        
+        return {
+            'status': 'failed',
+            'error': 'bot',
+        }
     except InvalidSolutionException as e:
         # Catch a specific user-facing error
         logger.error(f"Submission failed due to invalid solution: {e}")

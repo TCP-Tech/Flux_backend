@@ -65,8 +65,8 @@ func worker(id int) {
 			// create a custom logger
 			mailLogger := workerLogger.WithFields(
 				log.Fields{
-					"recipients": job.to,
-					"purpose":    job.purpose,
+					"recipients": job.To,
+					"purpose":    job.Purpose,
 				},
 			)
 
@@ -101,9 +101,9 @@ func worker(id int) {
 func constructMail(job emailJob) *gomail.Message {
 	mail := gomail.NewMessage()
 	mail.SetHeader(KeyEmailFrom, job.from)
-	mail.SetHeader(KeyEmailTo, job.to...)
-	mail.SetHeader(KeyEmailSubject, job.subject)
-	mail.SetBody(string(job.bodyType), job.body)
+	mail.SetHeader(KeyEmailTo, job.To...)
+	mail.SetHeader(KeyEmailSubject, job.Subject)
+	mail.SetBody(string(job.BodyType), job.Body)
 	return mail
 }
 

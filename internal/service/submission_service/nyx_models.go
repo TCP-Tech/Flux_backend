@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
+	"github.com/tcp_snm/flux/internal/email"
 	"github.com/tcp_snm/flux/internal/service/problem_service"
 	"github.com/tcp_snm/flux/internal/service/scheduler_service"
 )
@@ -37,6 +38,7 @@ const (
 	prNyxMstLoadReport
 	prNyxMstScrLaunched
 	prNyxMstSlvBotErr
+	prNyxMstSlvBotCorrupted
 	prNyxMstSlvDead
 	prNyxMstScrDead
 	prNyxMstRefreshBots
@@ -61,10 +63,10 @@ const (
 )
 
 const (
-	mailNyxMaster  mailID = "mail@nyx_script_master"
+	mailNyxMaster  mailID = "mail@nyx_master"
 	mailNyxBotMgr  mailID = "mail@nyx_bot_manager"
 	mailNyxLdMnr   mailID = "mail@nyx_load_monitor"
-	mailNyxManager mailID = "mail@nyx_sub_manager"
+	mailNyxManager mailID = "mail@nyx_manager"
 )
 
 // used by watcher for extracting values from solution map
@@ -176,9 +178,13 @@ type nyxMaster struct {
 	db                *database.Queries
 	// used to keep track of slaves that have been scheduled to kill
 	killedSlaves []*nyxSlaveContainer
+	emailService *email.EmailService
 }
 
 // used by the master to keep track of all active submission requests from the watcher
+// we can assign an expiry to it. But it might lead to a lot of duplicate submissions cloggint the system
+// its better to design the system to handle all cases where this active submission is no longer valid
+// deliberately than giving some expiry to it...
 type nyxActSub struct {
 	from         mailID
 	submissionID uuid.UUID
@@ -236,9 +242,11 @@ type mnrStopDecision struct {
 
 type mnrSubAlert cfSubStatus
 
-type mnrStopped string
+type mnrStopped string // bot name
 
 type mnrUpdateStopDecision time.Time
+
+type corruptedBot string // bot name
 
 // this is responsible for querying all the submission status made using the bot
 // being monitored by this component. One monitor can only monitor one bot. If there are
@@ -256,7 +264,7 @@ type cfBotMonitor struct {
 	stopDecision mnrStopDecision
 }
 
-// manages multiple bot monitors
+// manages multiple bot monitors. currently support codeforces only
 type nyxBotMgr struct {
 	sync.Mutex
 	monitors     map[string]*cfBotMonitor // botName -> monitor
@@ -266,7 +274,7 @@ type nyxBotMgr struct {
 	postman      *postman
 	logger       *logrus.Entry
 	subStatMgr   subStatManager
-	distribution map[uuid.UUID]nyxSlaveDist
+	distribution map[uuid.UUID]*nyxSlaveDist
 }
 
 type mgrRefreshBots struct {

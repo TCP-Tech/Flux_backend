@@ -53,13 +53,14 @@ def process_cf_requests(
     req: CfSubmitRequest,
     sb: BaseCase,
     cf_submit_url: str
-):
+) -> dict[str, str]:
     # thread for random mouse movements to simulate human actions
     mouse_event = threading.Event()
     t = threading.Thread(
         target=_random_mouse, args=(sb, mouse_event,)
     )
 
+    cookies = None
     try:
         # start the thread as a daemon
         # so that it automatically dies if the main thread die
@@ -68,7 +69,7 @@ def process_cf_requests(
         t.start()
 
         # submit the solution
-        submit_to_cf(sb, req, cf_submit_url)
+        cookies = submit_to_cf(sb, req, cf_submit_url)
         logger.info(
             f'solution of req with submission_id {req.submission_id} submitted to cf successfully',
         )
@@ -87,13 +88,15 @@ def process_cf_requests(
         except Exception as e:
             logger.error(f'failed to join the random mouse thread: {e}')
         sb.open("about:blank")
+    
+    return cookies
 
 
 def submit_to_cf(
     sb: BaseCase,
     req: CfSubmitRequest,
     cf_submit_url: str
-):
+) -> dict[str, str]:
     logger.debug(f'processing cf_submit_request with submission id {req.submission_id}')
 
     # opening multiple tabs at a time leads to seleniumbase detection
@@ -203,3 +206,6 @@ def submit_to_cf(
         logger.debug('submission table has been found')
     except NoSuchElementException:
         logger.warning(f'failed to load submission page after submission in {TimeoutSubmissionTable} seconds')
+
+    # return cookies of the site
+    return {c['name']: c['value'] for c in sb.get_cookies()}

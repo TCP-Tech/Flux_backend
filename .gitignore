@@ -1,5 +1,2 @@
 .env
-*.png
 nyx/nyx_venv
-socket_file
-tut.py

@@ -90,3 +90,9 @@ WHERE cf_submissions.cf_sub_id = data.id;
 
 -- name: PollPendingSubmissions :many
 SELECT * FROM submissions WHERE state = ANY(sqlc.arg(pending_states)::VARCHAR[]);
+
+-- name: UpdateBot :one
+UPDATE bots SET cookies=$2 WHERE name=$1 RETURNING *;
+
+-- name: DeleteBot :exec
+DELETE FROM bots WHERE name=$1;
