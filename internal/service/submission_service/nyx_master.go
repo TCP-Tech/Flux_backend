@@ -15,6 +15,7 @@ import (
 	"github.com/oleiade/lane"
 	"github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
+	"github.com/tcp_snm/flux/internal/email"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service/scheduler_service"
 )
@@ -44,6 +45,9 @@ func (master *nyxMaster) Start(
 	}
 	if master.db == nil {
 		panic("master expects non-nil db")
+	}
+	if master.emailService == nil {
+		panic("master expects non-nil email service")
 	}
 
 	// setup load manager
@@ -110,10 +114,80 @@ func (master *nyxMaster) processMails() {
 			master.handleInvalidClient(topMail)
 		case refreshBots:
 			master.refreshBots()
+		case corruptedBot:
+			master.handleCorruptedBot(topMail)
 		case slaveFailed: // keep this case at last as its type is any and everything will get matched by this
 			master.handleFailedSlave(topMail)
 		default:
 			master.logger.Errorf("ignoring invalid mail %v", topMail)
+		}
+	}
+}
+
+func (master *nyxMaster) handleCorruptedBot(corMail mail) {
+	botName := string(corMail.body.(corruptedBot))
+
+	// remove the bot from inventory
+	master.bots = slices.DeleteFunc(master.bots, func(bot Bot) bool {
+		return bot.Name == botName
+	})
+
+	master.logger.Warnf(
+		"%v reported bot %v is corrupted. removed the bot from inventory",
+		corMail.from, botName,
+	)
+
+	// inform the bot manager about the corrupted bot
+	master.postman.postMail(mail{
+		from: mailNyxMaster,
+		to:   mailNyxBotMgr,
+		body: corMail.body,
+	})
+
+	master.logger.Warnf("reported bot manager that bot %v is corrupted", botName)
+
+	// send a mail alerting managers about the corrupted bot
+	go master.alertManagerAboutCorruptedBot(botName)
+	master.logger.Infof("launched a gor to try sending mails to managers about corrupted bot %v", botName)
+}
+
+func (master *nyxMaster) alertManagerAboutCorruptedBot(botName string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*10)
+	defer cancel()
+
+	ticker := time.NewTicker(time.Second * 30)
+	defer ticker.Stop()
+
+	for {
+		req := email.EmailRequest{
+			Subject: fmt.Sprintf("Bot Corrupted"),
+			Body: fmt.Sprintf(
+				"Bot %v can no longer be used. Please relogin and update its cookies",
+				botName,
+			),
+			BodyType: email.KeyEmailBodyPlain,
+			Purpose:  email.PurposeBotNotWorkingAlert,
+		}
+		if err := master.emailService.MailManagers(ctx, req); err != nil {
+			master.logger.Error(
+				"failed to send mail to managers to alert about the corrupted bot %v. Trying again...",
+				botName,
+			)
+		} else {
+			master.logger.Infof("initiated mails to alert managers about corrupted bot %v", botName)
+			return
+		}
+
+		select {
+		case <-ticker.C:
+			// retires
+		case <-ctx.Done():
+			master.logger.Errorf(
+				"failed to send mail to managers to alert about corrupted bot %v."+
+					"Context deadline exceeded. Cannot try anymore...",
+				botName,
+			)
+			return
 		}
 	}
 }

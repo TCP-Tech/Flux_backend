@@ -69,6 +69,9 @@ func NewV1Router() *chi.Mux {
 	// bots
 	v1.Post("/bots", middleware.JWTMiddleware(apiConfig.AddBot))
 	v1.Get("/bots/refresh", middleware.JWTMiddleware(apiConfig.RefreshBots))
+	v1.Get("/bots", middleware.JWTMiddleware(apiConfig.GetBots))
+	v1.Put("/bots/", middleware.JWTMiddleware(apiConfig.UpdateBot))
+	v1.Delete("/bots", middleware.JWTMiddleware(apiConfig.DeleteBot))
 
 	// submit
 	v1.Post("/submit", middleware.JWTMiddleware(apiConfig.HandlerSubmit))

@@ -94,6 +94,15 @@ func (q *Queries) CanSubmitProblemInPractice(ctx context.Context, problemID int3
 	return column_1, err
 }
 
+const deleteBot = `-- name: DeleteBot :exec
+DELETE FROM bots WHERE name=$1
+`
+
+func (q *Queries) DeleteBot(ctx context.Context, name string) error {
+	_, err := q.db.Exec(ctx, deleteBot, name)
+	return err
+}
+
 const getBulkCfSubmission = `-- name: GetBulkCfSubmission :many
 SELECT s.state, cs.cf_sub_id, cs.submission_id, cs.time_consumed_millis, cs.memory_consumed_bytes, cs.passed_test_count 
 FROM cf_submissions cs
@@ -300,6 +309,28 @@ func (q *Queries) PollPendingSubmissions(ctx context.Context, pendingStates []st
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateBot = `-- name: UpdateBot :one
+UPDATE bots SET cookies=$2 WHERE name=$1 RETURNING name, platform, cookies, created_at, updated_at
+`
+
+type UpdateBotParams struct {
+	Name    string          `json:"name"`
+	Cookies json.RawMessage `json:"cookies"`
+}
+
+func (q *Queries) UpdateBot(ctx context.Context, arg UpdateBotParams) (Bot, error) {
+	row := q.db.QueryRow(ctx, updateBot, arg.Name, arg.Cookies)
+	var i Bot
+	err := row.Scan(
+		&i.Name,
+		&i.Platform,
+		&i.Cookies,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const updateSubmissionByID = `-- name: UpdateSubmissionByID :one

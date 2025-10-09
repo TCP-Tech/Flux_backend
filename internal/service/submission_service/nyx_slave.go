@@ -83,12 +83,14 @@ func (slave *nyxSlave) processMails() {
 		// process
 		switch body := topMail.body.(type) {
 		case cfSubRequest:
+			shortSubID := getShortUUID(body.submissionID, 5)
+
 			// get a bot from botventory
 			bot, err := slave.botMgr.getBot(slave.taskID)
 			if err != nil {
 				slave.logger.Errorf(
 					"slave failed to get a bot. aborting submission %v",
-					getShortUUID(body.submissionID, 5),
+					shortSubID,
 				)
 
 				// inform master that slave failed to get a bot
@@ -98,7 +100,21 @@ func (slave *nyxSlave) processMails() {
 					body:     slaveBotError(err),
 					priority: prNyxMstSlvBotErr,
 				})
-				break // breaks from switch
+				slave.logger.Infof("informed master about slave bot error")
+
+				// also inform that submission failed
+				slave.postman.postMail(mail{
+					from:     slave.mailID,
+					to:       mailNyxMaster,
+					body:     cfSubResult{err: err, submissionID: body.submissionID},
+					priority: prNyxMstSubFailed,
+				})
+				slave.logger.Infof(
+					"informed master that sub %v failed due to slave bot error",
+					shortSubID,
+				)
+
+				continue
 			}
 
 			// submit
@@ -320,7 +336,9 @@ func (slave *nyxSlave) submitCfSolution(
 	// read the response
 	dec := json.NewDecoder(conn)
 	var msg struct {
-		Error string `json:"error"`
+		Error     string            `json:"error"`
+		UserError bool              `json:"user_error"`
+		Cookies   map[string]string `json:"cookies"`
 	}
 	if err = dec.Decode(&msg); err != nil {
 		err = flux_errors.WrapIPCError(err)
@@ -328,8 +346,39 @@ func (slave *nyxSlave) submitCfSolution(
 		return cfSubStatus{}, err
 	}
 
+	// update cookies irrespective of result
+	if len(msg.Cookies) > 0 {
+		// ask bot manager to update the cookies
+		if err = slave.botMgr.updateBotCookies(bot.Name, msg.Cookies); err != nil {
+			subLogger.Errorf(
+				"bot manager failed to update cookies of bot %v",
+				bot.Name,
+			)
+		} else {
+			subLogger.Debugf("updated cookies of bot %v", bot.Name)
+		}
+	} else {
+		subLogger.Warnf("no cookies were returned by script of bot %v", bot.Name)
+	}
+
 	// check if it was submitted successfully
 	if msg.Error != "" {
+		// check if its a bot error
+		if msg.Error == "bot" {
+			// inform master that the bot became corrupted
+			slave.postman.postMail(mail{
+				from:     slave.mailID,
+				to:       mailNyxMaster,
+				body:     corruptedBot(bot.Name),
+				priority: prNyxMstSlvBotCorrupted,
+			})
+
+			slave.logger.Infof("informed master that bot %v is corrupted", bot.Name)
+		}
+		if msg.UserError {
+			// TODO: complete this
+
+		}
 		err = fmt.Errorf(
 			"%w, %s",
 			flux_errors.ErrSubmissionFailed,

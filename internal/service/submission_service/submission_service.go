@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/tcp_snm/flux/internal/database"
+	"github.com/tcp_snm/flux/internal/email"
 	"github.com/tcp_snm/flux/internal/flux_errors"
 	"github.com/tcp_snm/flux/internal/service"
 	"github.com/tcp_snm/flux/internal/service/scheduler_service"
@@ -23,6 +24,7 @@ func (sub *SubmissionService) Start(
 	cfQueryUrl string,
 	dbSubPollSeconds int64,
 	scheduler *scheduler_service.Scheduler,
+	emailService *email.EmailService,
 ) {
 	// validate fields
 	for _, field := range []struct {
@@ -72,10 +74,11 @@ func (sub *SubmissionService) Start(
 
 	// initialize nyxMaster
 	nyxMaster := nyxMaster{
-		postman:   &postman,
-		scrStCmd:  scrStCmd,
-		scheduler: scheduler,
-		db:        sub.DB,
+		postman:      &postman,
+		scrStCmd:     scrStCmd,
+		scheduler:    scheduler,
+		db:           sub.DB,
+		emailService: emailService,
 	}
 	nyxMaster.Start(sub.DB, cfQueryUrl, &subQuerier)
 
@@ -213,4 +216,165 @@ func (sub *SubmissionService) RefreshBots(ctx context.Context) error {
 	sub.logger.Info("requested master to refresh bots")
 
 	return nil
+}
+
+func (sub *SubmissionService) UpdateBot(ctx context.Context, bot Bot) (Bot, error) {
+	// get claims
+	claims, err := service.GetClaimsFromContext(ctx)
+	if err != nil {
+		return Bot{}, err
+	}
+
+	// authorize
+	if err = sub.UserService.AuthorizeUserRole(
+		ctx, user_service.RoleManager,
+		fmt.Sprintf("user %s tried for manager access to update a bot", claims.UserName),
+	); err != nil {
+		return Bot{}, err
+	}
+
+	// create a new transaction
+	tx, err := service.GetNewTransaction(ctx)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot get a transaction to update bot %v in db: %w",
+			flux_errors.ErrInternal,
+			bot.Name,
+			err,
+		)
+		return Bot{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := sub.DB.WithTx(tx)
+
+	// marshal cookies
+	cookieBytes, err := json.Marshal(bot.Cookies)
+	if err != nil {
+		err = fmt.Errorf(
+			"%w, cannot marshal cookies: %w",
+			flux_errors.ErrInvalidRequest,
+			err,
+		)
+		sub.logger.Error(err)
+		return Bot{}, err
+	}
+
+	// update bot in db
+	dbBot, err := qtx.UpdateBot(ctx, database.UpdateBotParams{
+		Name:    bot.Name,
+		Cookies: json.RawMessage(cookieBytes),
+	})
+	if err != nil {
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf("cannot update bot %v in db", bot.Name),
+		)
+		return Bot{}, err
+	}
+
+	fluxBot, err := dbBotToFluxBot(dbBot)
+	if err != nil {
+		return Bot{}, err
+	}
+
+	// refresh bots
+	if err = sub.RefreshBots(ctx); err != nil {
+		sub.logger.Error(
+			"cannot refresh bots after updating bot in db. reverting transaction",
+		)
+		return Bot{}, err
+	}
+
+	// commit transaction
+	if err = tx.Commit(ctx); err != nil {
+		err = fmt.Errorf(
+			"%w, cannot commit transaction after updating bot %v, %w",
+			flux_errors.ErrInternal,
+			bot.Name,
+			err,
+		)
+		return Bot{}, err
+	}
+
+	return fluxBot, nil
+}
+
+func (sub *SubmissionService) DeleteBot(ctx context.Context, name string) error {
+	// get claims
+	claims, err := service.GetClaimsFromContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	// authorize
+	if err = sub.UserService.AuthorizeUserRole(
+		ctx, user_service.RoleManager,
+		fmt.Sprintf("user %s tried for manager access to delete a bot", claims.UserName),
+	); err != nil {
+		return err
+	}
+
+	// delete bot
+	err = sub.DB.DeleteBot(ctx, name)
+	if err != nil {
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			fmt.Sprintf("cannot delete bot %v", name),
+		)
+		return err
+	}
+
+	// refresh bots
+	if err = sub.RefreshBots(ctx); err != nil {
+		sub.logger.Errorf(
+			"cannot refresh bots after deleting bot %v from db. reverting transaction",
+			name,
+		)
+	}
+
+	return nil
+}
+
+func (sub *SubmissionService) GetBots(ctx context.Context) ([]Bot, error) {
+	// get claims
+	claims, err := service.GetClaimsFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// authorize
+	if err = sub.UserService.AuthorizeUserRole(
+		ctx, user_service.RoleManager,
+		fmt.Sprintf("user %s tried for manager access to see bots", claims.UserName),
+	); err != nil {
+		return nil, err
+	}
+
+	// get bots from db
+	dbBots, err := sub.DB.GetBots(ctx)
+	if err != nil {
+		err = flux_errors.HandleDBErrors(
+			err,
+			errMsgs,
+			"cannot get bots from db",
+		)
+		return nil, err
+	}
+
+	// convert bots
+	bots := make([]Bot, 0)
+	for _, dbBot := range dbBots {
+		bot, err := dbBotToFluxBot(dbBot)
+		if err != nil {
+			logrus.Errorf("cannot convert db bot %v to flux bot. cannot process request GetBots")
+			return nil, err
+		}
+
+		bots = append(bots, bot)
+	}
+
+	return bots, nil
 }
