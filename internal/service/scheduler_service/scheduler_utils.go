@@ -145,7 +145,7 @@ func (t *Task) isAlive() bool {
 }
 
 func (s *Scheduler) queueWaitingTask(rawTask any) {
-	task, ok := rawTask.(*Task)
+	taskID, ok := rawTask.(uuid.UUID)
 	if !ok {
 		logrus.Errorf(
 			"cannot cast waiting task %v to *taskMetaData",
@@ -154,7 +154,7 @@ func (s *Scheduler) queueWaitingTask(rawTask any) {
 		return
 	}
 
-	s.taskQueue <- task.TaskID
+	s.taskQueue <- taskID
 }
 
 func (t *Task) getState() TaskState {

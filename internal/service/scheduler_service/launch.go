@@ -59,6 +59,7 @@ func (s *Scheduler) launchTask(reqID uuid.UUID) {
 				Out:    nil,
 				Error:  err,
 			}
+			task.State = StateFailed
 			task.OnLaunchComplete(res)
 			return
 		}
