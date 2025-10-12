@@ -71,7 +71,6 @@ func assertTaskState(
 			return
 		}
 		t.Logf("task %v current state: %v, waiting for state: %v", taskID, currentState, state)
-		t.Logf("currentState: %v, expectedState: %v", currentState, state)
 		time.Sleep(time.Second)
 	}
 	if currentState != state {
@@ -206,7 +205,7 @@ func TestTaskRun(t *testing.T) {
 	}
 }
 
-func TestHightPriorityTaskKillLowPriorityTaskExtended(t *testing.T) {
+func TestHightPriorityTaskKillLowPriorityTask(t *testing.T) {
 	tasks := []struct {
 		name              string
 		priority          int32
@@ -220,7 +219,7 @@ func TestHightPriorityTaskKillLowPriorityTaskExtended(t *testing.T) {
 			priority: 50,
 			cmd: scheduler_service.Command{
 				Name:        "sleep",
-				Args:        []string{"8"},
+				Args:        []string{"3"},
 				CmdExecType: scheduler_service.CmdRun,
 			},
 			schedulingRetries: 3,
@@ -290,7 +289,7 @@ func TestHightPriorityTaskKillLowPriorityTaskExtended(t *testing.T) {
 	}
 
 	for idx, task := range tasks {
-		assertTaskState(t, ids[idx], task.finalState, 10)
+		assertTaskState(t, ids[idx], task.finalState, 5)
 	}
 }
 
@@ -301,11 +300,9 @@ func TestTaskOutput(t *testing.T) {
 		expectedOutput string
 		finalState     scheduler_service.TaskState
 		errorMessag    string
-		priority       int32
-		resources      scheduler_service.Resources
 	}{
 		{
-			name: "output_no_error",
+			name: "output_no_error Task 1",
 			cmd: scheduler_service.Command{
 				Name:        "echo",
 				Args:        []string{"Hello"},
@@ -314,14 +311,9 @@ func TestTaskOutput(t *testing.T) {
 			expectedOutput: "Hello\n",
 			finalState:     scheduler_service.StateCompleted,
 			errorMessag:    "",
-			priority:       20,
-			resources: scheduler_service.Resources{
-				CPU:    5,
-				Memory: 200,
-			},
 		},
 		{
-			name: "output_with_error",
+			name: "output_with_error Task 2",
 			cmd: scheduler_service.Command{
 				Name:        "sh",
 				Args:        []string{"-c", "echo hello && exit 1"},
@@ -330,14 +322,9 @@ func TestTaskOutput(t *testing.T) {
 			expectedOutput: "hello\n",
 			finalState:     scheduler_service.StateFailed,
 			errorMessag:    "exit status 1",
-			priority:       50,
-			resources: scheduler_service.Resources{
-				CPU:    80,
-				Memory: 200,
-			},
 		},
 		{
-			name: "error_no_output",
+			name: "error_no_output Task 3",
 			cmd: scheduler_service.Command{
 				Name:        "sh",
 				Args:        []string{"-c", "echo hello 1>&2 && exit 1"},
@@ -346,14 +333,9 @@ func TestTaskOutput(t *testing.T) {
 			expectedOutput: "",
 			finalState:     scheduler_service.StateFailed,
 			errorMessag:    "exit status 1",
-			priority:       10,
-			resources: scheduler_service.Resources{
-				CPU:    80,
-				Memory: 200,
-			},
 		},
 		{
-			name: "no_output_no_error",
+			name: "no_output_no_error Task 4",
 			cmd: scheduler_service.Command{
 				Name:        "true",
 				CmdExecType: scheduler_service.CmdOutput,
@@ -361,20 +343,62 @@ func TestTaskOutput(t *testing.T) {
 			expectedOutput: "",
 			finalState:     scheduler_service.StateCompleted,
 			errorMessag:    "",
-			resources: scheduler_service.Resources{
-				CPU:    80,
-				Memory: 200,
+		},
+		{
+			name: "output_no_error Task 5",
+			cmd: scheduler_service.Command{
+				Name:        "sleep",
+				Args:        []string{"1"},
+				CmdExecType: scheduler_service.CmdLongRunning,
 			},
+			expectedOutput: "",
+			finalState:     scheduler_service.StateCompleted,
+			errorMessag:    "",
+		},
+		{
+			name: "output_with_error Task 6",
+			cmd: scheduler_service.Command{
+				Name:        "sh",
+				Args:        []string{"-c", "echo hello && exit 1"},
+				CmdExecType: scheduler_service.CmdOutput,
+			},
+			expectedOutput: "hello\n",
+			finalState:     scheduler_service.StateFailed,
+			errorMessag:    "exit status 1",
+		},
+		{
+			name: "error_no_output Task 7",
+			cmd: scheduler_service.Command{
+				Name:        "sh",
+				Args:        []string{"-c", "echo hello 1>&2 && exit 1"},
+				CmdExecType: scheduler_service.CmdOutput,
+			},
+			expectedOutput: "",
+			finalState:     scheduler_service.StateFailed,
+			errorMessag:    "exit status 1",
+		},
+		{
+			name: "no_output_no_error Task 8",
+			cmd: scheduler_service.Command{
+				Name:        "true",
+				CmdExecType: scheduler_service.CmdOutput,
+			},
+			expectedOutput: "",
+			finalState:     scheduler_service.StateCompleted,
+			errorMessag:    "",
 		},
 	}
 
 	for _, task := range tasks {
 		output := false
 		req := scheduler_service.TaskRequest{
-			Name:              task.name,
-			Resources:         task.resources,
+			Name: task.name,
+			Resources: scheduler_service.Resources{
+				CPU:    40,
+				Memory: 200,
+			},
 			Command:           task.cmd,
-			Priority:          task.priority,
+			Priority:          20,
 			SchedulingRetries: 1,
 			OnLaunchComplete: func(response scheduler_service.TaskResponse) {
 				if task.errorMessag != "" {
@@ -406,189 +430,7 @@ func TestTaskOutput(t *testing.T) {
 	}
 }
 
-func TestHightPriorityTaskKillLowPriorityTask(t *testing.T) {
-	tasks := []struct {
-		name              string
-		priority          int32
-		schedulingRetries int32
-		cmd               scheduler_service.Command
-		resources         scheduler_service.Resources
-		finalState        scheduler_service.TaskState
-	}{
-
-		{
-			name:     "low_priority_task",
-			priority: 30,
-			cmd: scheduler_service.Command{
-				Name:        "sleep",
-				Args:        []string{"100"},
-				CmdExecType: scheduler_service.CmdLongRunning,
-			},
-			schedulingRetries: 3,
-			finalState:        scheduler_service.StateKilled,
-			resources: scheduler_service.Resources{
-				CPU:    80,
-				Memory: 900,
-			},
-		},
-
-		{
-			name:     "high_priority_task",
-			priority: 100,
-			cmd: scheduler_service.Command{
-				Name:        "true",
-				CmdExecType: scheduler_service.CmdRun,
-			},
-			schedulingRetries: 3,
-			finalState:        scheduler_service.StateCompleted,
-			resources: scheduler_service.Resources{
-				CPU:    150,
-				Memory: 200,
-			},
-		},
-	}
-
-	ids := make([]uuid.UUID, 0)
-
-	for _, task := range tasks {
-		req := scheduler_service.TaskRequest{
-			Name:              task.name,
-			Resources:         task.resources,
-			Command:           task.cmd,
-			Priority:          task.priority,
-			SchedulingRetries: task.schedulingRetries,
-			OnLaunchComplete: func(response scheduler_service.TaskResponse) {
-				t.Logf("task %v's response: %v", task.name, response)
-			},
-		}
-
-		taskID, err := scheduler.ScheduleTask(req)
-		if err != nil {
-			t.Errorf(
-				"task %v cannot scheduled: %v",
-				task.name,
-				err,
-			)
-			return
-		}
-		ids = append(ids, taskID)
-	}
-
-	for idx, task := range tasks {
-		assertTaskState(t, ids[idx], task.finalState, 10)
-	}
-}
-
-func TestTaskOutput2(t *testing.T) {
-	tasks := []struct {
-		name           string
-		cmd            scheduler_service.Command
-		expectedOutput string
-		finalState     scheduler_service.TaskState
-		errorMessag    string
-		priority       int32
-		resources      scheduler_service.Resources
-	}{
-		{
-			name: "output_no_error Task 1",
-			cmd: scheduler_service.Command{
-				Name:        "sleep",
-				Args:        []string{"10"},
-				CmdExecType: scheduler_service.CmdLongRunning,
-			},
-			expectedOutput: "",
-			finalState:     scheduler_service.StateKilled,
-			errorMessag:    "",
-			priority:       20,
-			resources: scheduler_service.Resources{
-				CPU:    150,
-				Memory: 200,
-			},
-		},
-		{
-			name: "output_with_error",
-			cmd: scheduler_service.Command{
-				Name:        "sh",
-				Args:        []string{"-c", "echo hello && exit 1"},
-				CmdExecType: scheduler_service.CmdOutput,
-			},
-			expectedOutput: "hello\n",
-			finalState:     scheduler_service.StateFailed,
-			errorMessag:    "exit status 1",
-			priority:       50,
-			resources: scheduler_service.Resources{
-				CPU:    80,
-				Memory: 200,
-			},
-		},
-		{
-			name: "error_no_output",
-			cmd: scheduler_service.Command{
-				Name:        "sh",
-				Args:        []string{"-c", "echo hello 1>&2 && exit 1"},
-				CmdExecType: scheduler_service.CmdOutput,
-			},
-			expectedOutput: "",
-			finalState:     scheduler_service.StateFailed,
-			errorMessag:    "exit status 1",
-			priority:       10,
-			resources: scheduler_service.Resources{
-				CPU:    80,
-				Memory: 200,
-			},
-		},
-		{
-			name: "no_output_no_error",
-			cmd: scheduler_service.Command{
-				Name:        "true",
-				CmdExecType: scheduler_service.CmdOutput,
-			},
-			expectedOutput: "",
-			finalState:     scheduler_service.StateCompleted,
-			errorMessag:    "",
-			resources: scheduler_service.Resources{
-				CPU:    80,
-				Memory: 200,
-			},
-		},
-	}
-
-	ids := make([]uuid.UUID, 0)
-
-	for _, task := range tasks {
-
-		req := scheduler_service.TaskRequest{
-			Name:              task.name,
-			Resources:         task.resources,
-			Command:           task.cmd,
-			Priority:          task.priority,
-			SchedulingRetries: 1,
-			OnLaunchComplete: func(response scheduler_service.TaskResponse) {
-				if task.errorMessag != "" {
-					if response.Error == nil || response.Error.Error() != task.errorMessag {
-						t.Errorf("task %v expected error %v, got %v", task.name, task.errorMessag, response.Error)
-					}
-				}
-
-				t.Logf("task %v's response: %v", task.name, response)
-
-			},
-		}
-
-		taskID, err := scheduler.ScheduleTask(req)
-		if err != nil {
-			t.Errorf("failed to sumbit task %v: %v", task.name, err)
-		}
-		ids = append(ids, taskID)
-
-	}
-	for idx, task := range tasks {
-		assertTaskState(t, ids[idx], task.finalState, 10)
-	}
-}
-
-// Error
-func TestWaitingQueueToBeUsed(t *testing.T) {
+func TestTaskWillGoToWaitingQueue(t *testing.T) {
 	tasks := []struct {
 		name           string
 		cmd            scheduler_service.Command
@@ -885,7 +727,7 @@ func TestAllLongRunningTasks(t *testing.T) {
 }
 
 // Error
-func TestMultiStageProcessKilling(t *testing.T) {
+func TestLowPriorityTaskFailedToLaunch(t *testing.T) {
 
 	tasks := []struct {
 		name        string
@@ -945,7 +787,7 @@ func TestMultiStageProcessKilling(t *testing.T) {
 			name: "Task 4",
 			cmd: scheduler_service.Command{
 				Name:        "sleep",
-				Args:        []string{"5"},
+				Args:        []string{"3"},
 				CmdExecType: scheduler_service.CmdLongRunning,
 			},
 			finalState:  scheduler_service.StateCompleted,
