@@ -89,11 +89,13 @@ type nyxManager struct {
 	probSerConfig *problem_service.ProblemService
 }
 
+type BotCookies []map[string]any
+
 // data object to store details of a bot
 type Bot struct {
 	Name     string
 	Platform string `validate:"oneof=codeforces"`
-	Cookies  map[string]string
+	Cookies  BotCookies
 }
 
 // used to keep track of all the slaves that is currently being scheduled by the scheduler

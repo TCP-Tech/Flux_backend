@@ -225,7 +225,7 @@ func getContextWithKeys(
 
 func dbBotToFluxBot(dbBot database.Bot) (Bot, error) {
 	// unmarhsal cookies
-	var cookies map[string]string
+	var cookies BotCookies
 	err := json.Unmarshal(dbBot.Cookies, &cookies)
 	if err != nil {
 		err = fmt.Errorf(

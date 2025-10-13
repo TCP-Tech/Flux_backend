@@ -42,7 +42,7 @@ SelectorCfLogo = 'img[title="Codeforces"]'
 # However, since currently codeforces is only supported as a platform, 
 # it is fine for now.
 class CfSubmitRequest(BaseModel):
-    cookies: dict[str, str]
+    cookies: list[dict[str, str]]
     language: str
     solution_file_path: str
     bot_name: str
@@ -208,4 +208,4 @@ def submit_to_cf(
         logger.warning(f'failed to load submission page after submission in {TimeoutSubmissionTable} seconds')
 
     # return cookies of the site
-    return {c['name']: c['value'] for c in sb.get_cookies()}
+    return sb.get_cookies()

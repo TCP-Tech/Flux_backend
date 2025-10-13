@@ -11,19 +11,46 @@ import pyautogui
 
 logger = logging.getLogger("nyx_logger")
 
-def _set_cf_cookies_using_cdp(sb: BaseCase, cookies: dict[str, str]):
+def _set_cf_cookies_using_cdp(sb: BaseCase, cookies: list[dict[str, str]]):
     logger.debug("enabling driver's network domain")
+
+    # TODO: remove this log
+    logger.debug(cookies)
+
     sb.execute_cdp_cmd("Network.enable", {})
-    for key, value in cookies.items():
-        sb.execute_cdp_cmd("Network.setCookie", {
-            "name": key,
-            "value": value,
-            "domain": ".codeforces.com",
-            "path": "/",
-            "httpOnly": True,
-            "secure": False,
-            "sameSite": "Lax"
-        })
+    for cookie in cookies:
+        if not cookie.get("name"):
+            logger.error(f"cookie {cookie} has no name key")
+            continue
+        if not cookie.get("value"):
+            logger.error(f'cookie {cookie} has no value field')
+            continue
+
+        cookie_params = {
+            "name": cookie["name"],
+            "value": cookie["value"],
+            "domain": cookie.get("domain", ".codeforces.com"),
+            "path": cookie.get("path", "/"),
+            "httpOnly": bool(cookie.get("httpOnly", False)),
+            "secure": bool(cookie.get("secure", False)),
+        }
+
+        # Only set expiry if present
+        if "expiry" in cookie:
+            try:
+                cookie_params["expiry"] = int(cookie["expiry"])
+            except (TypeError, ValueError):
+                logger.error(f'cannot cast cookie {cookie["name"]}\'s expiry ({cookie["expiry"]}) to int. Setting the default as 5 minutes from now')
+                cookie_params["expiry"] = int(time.time()) + 5 * 60
+
+        # Only set sameSite if valid
+        same_site = cookie.get("sameSite")
+        if same_site in ("Strict", "Lax", "None"):
+            cookie_params["sameSite"] = same_site
+
+        # set the cookies using cdp
+        sb.execute_cdp_cmd("Network.setCookie", cookie_params)
+
     logger.debug('disabling driver\'s network domain')
     sb.execute_cdp_cmd("Network.disable", {})
 

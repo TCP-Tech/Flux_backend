@@ -375,7 +375,7 @@ func (mgr *nyxBotMgr) getMailID() mailID {
 	return mailNyxBotMgr
 }
 
-func (mgr *nyxBotMgr) updateBotCookies(botName string, cookies map[string]string) error {
+func (mgr *nyxBotMgr) updateBotCookies(botName string, cookies BotCookies) error {
 	// marshal the cookies
 	bytes, err := json.Marshal(cookies)
 	if err != nil {

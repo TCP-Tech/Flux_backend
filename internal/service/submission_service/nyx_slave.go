@@ -336,9 +336,9 @@ func (slave *nyxSlave) submitCfSolution(
 	// read the response
 	dec := json.NewDecoder(conn)
 	var msg struct {
-		Error     string            `json:"error"`
-		UserError bool              `json:"user_error"`
-		Cookies   map[string]string `json:"cookies"`
+		Error     string     `json:"error"`
+		UserError bool       `json:"user_error"`
+		Cookies   BotCookies `json:"cookies"`
 	}
 	if err = dec.Decode(&msg); err != nil {
 		err = flux_errors.WrapIPCError(err)
