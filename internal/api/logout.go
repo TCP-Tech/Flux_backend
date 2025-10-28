@@ -7,9 +7,8 @@ import (
 	"github.com/tcp_snm/flux/middleware"
 )
 
-// HandlerLogout handles user logout by expiring the JWT cookie
 func (a *Api) HandlerLogout(w http.ResponseWriter, r *http.Request) {
-	// Create a cookie with the same name as your login cookie
+
 	expiredCookie := &http.Cookie{
 		Name:     middleware.KeyJwtSessionCookieName, // must match login cookie name
 		Value:    "",
